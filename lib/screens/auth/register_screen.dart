@@ -990,7 +990,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   Future<void> _registerFingerprint() async {
     try {
-      final fingerprintData = await AuthService.registerFingerprint();
+      // Use new method for registration that doesn't require login
+      final fingerprintData =
+          await AuthService.registerFingerprintForNewUser('temp_user_id');
+
       if (fingerprintData != null) {
         setState(() {
           _registeredFingerprint = fingerprintData;
@@ -1015,8 +1018,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
               '${_streetController.text}, ${_manualVillageController.text}, ${_manualDistrictController.text}, ${_manualRegencyController.text}, ${_manualProvinceController.text}';
         }
 
-        print(
-            '🔄 Registering with fingerprint: $_registeredFingerprint'); // Debug
+        print('🔄 Starting registration...');
+
+        // Register user with fingerprint if available
+        String? fingerprintForRegistration;
+        if (_registeredFingerprint != null) {
+          fingerprintForRegistration = _registeredFingerprint;
+          print(
+              '🔄 Using fingerprint for registration: $fingerprintForRegistration');
+        }
 
         final user = await AuthService.register(
           email: _regEmailController.text,
@@ -1029,27 +1039,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
           district: _useManualAddress ? null : _selectedDistrict?.name,
           regency: _useManualAddress ? null : _selectedRegency?.name,
           province: _useManualAddress ? null : _selectedProvince?.name,
-          fingerprintData: _registeredFingerprint,
+          fingerprintData:
+              fingerprintForRegistration, // Include fingerprint if registered
         );
 
-        if (mounted) {
+        if (mounted && user != null) {
+          print('✅ User registration successful: ${user.email}');
+
           setState(() => _isLoading = false);
 
-          if (user != null) {
-            print(
-                '✅ User registered with fingerprint: ${user.fingerprintData}'); // Debug
-
-            // Manually save fingerprint to SharedPreferences as backup
-            if (_registeredFingerprint != null) {
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.setString(
-                  'fingerprint_data', _registeredFingerprint!);
-              print('🔒 Backup fingerprint saved: $_registeredFingerprint');
-            }
-
-            _generatedQRCode = user.qrCode;
-            setState(() => _showQRCode = true);
-          }
+          _generatedQRCode = user.qrCode;
+          setState(() => _showQRCode = true);
         }
       } catch (e) {
         if (mounted) {

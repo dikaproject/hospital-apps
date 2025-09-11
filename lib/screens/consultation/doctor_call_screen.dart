@@ -35,6 +35,7 @@ class _DoctorCallScreenState extends State<DoctorCallScreen>
   Duration _callDuration = Duration.zero;
 
   final DoctorInfo _doctor = DoctorInfo(
+    id: 'doc_001', // Add id
     name: 'Dr. Sarah Wijaya, Sp.PD',
     specialty: 'Spesialis Penyakit Dalam',
     hospital: 'RS Mitra Keluarga',
@@ -841,7 +842,8 @@ class _DoctorCallScreenState extends State<DoctorCallScreen>
           doctorRecommendation: DoctorRecommendation(
             doctorName: _doctor.name,
             specialty: _doctor.specialty,
-            hospital: _doctor.hospital,
+            hospital: _doctor.hospital ??
+                'RS Mitra Keluarga', // Fix: Handle null with default value
             urgency: widget.consultationResult.isUrgent ? 'Tinggi' : 'Sedang',
             notes: 'Pemeriksaan fisik diperlukan berdasarkan konsultasi online',
           ),

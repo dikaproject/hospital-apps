@@ -105,6 +105,50 @@ class UserModel {
   bool get isPatient => role == 'USER';
   bool get isDoctor => role == 'DOCTOR';
   bool get isAdmin => role == 'ADMIN';
+
+  UserModel copyWith({
+    String? id,
+    String? email,
+    String? fullName,
+    String? nik,
+    String? phone,
+    String? gender,
+    DateTime? dateOfBirth,
+    String? street,
+    String? village,
+    String? district,
+    String? regency,
+    String? province,
+    String? qrCode,
+    String? fingerprintData,
+    String? profilePicture,
+    String? role,
+    bool? isActive,
+    DateTime? createdAt,
+    DateTime? lastLogin,
+  }) {
+    return UserModel(
+      id: id ?? this.id,
+      email: email ?? this.email,
+      fullName: fullName ?? this.fullName,
+      nik: nik ?? this.nik,
+      phone: phone ?? this.phone,
+      gender: gender ?? this.gender,
+      dateOfBirth: dateOfBirth ?? this.dateOfBirth,
+      street: street ?? this.street,
+      village: village ?? this.village,
+      district: district ?? this.district,
+      regency: regency ?? this.regency,
+      province: province ?? this.province,
+      qrCode: qrCode ?? this.qrCode,
+      fingerprintData: fingerprintData, // Allow null explicitly
+      profilePicture: profilePicture ?? this.profilePicture,
+      role: role ?? this.role,
+      isActive: isActive ?? this.isActive,
+      createdAt: createdAt ?? this.createdAt,
+      lastLogin: lastLogin ?? this.lastLogin,
+    );
+  }
 }
 
 // Keep address models for dropdown API (separate from user model)

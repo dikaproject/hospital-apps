@@ -39,6 +39,7 @@ class _GeneralDoctorCallScreenState extends State<GeneralDoctorCallScreen>
   Duration _callDuration = Duration.zero;
 
   final DoctorInfo _generalDoctor = DoctorInfo(
+    id: 'doc_002', // Add id
     name: 'Dr. Andi Wijaya',
     specialty: 'Dokter Umum',
     hospital: 'RS Mitra Keluarga',

@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'dart:async';
 import 'consultation_result_screen.dart';
 import '../../models/chat_models.dart'; // Import chat models
+import '../../services/consultation_service.dart';
+import '../../models/consultation_models.dart';
 
 class AIConsultationScreen extends StatefulWidget {
   const AIConsultationScreen({super.key});
@@ -31,6 +33,10 @@ class _AIConsultationScreenState extends State<AIConsultationScreen>
     "Pada skala 1-10, seberapa mengganggu keluhan ini dalam aktivitas harian Anda?",
     "Apakah Anda pernah mengalami keluhan serupa sebelumnya?"
   ];
+
+  AIScreeningResult? _aiResult;
+  bool _isProcessingAI = false;
+  List<String> _extractedSymptoms = [];
 
   @override
   void initState() {
@@ -90,33 +96,7 @@ class _AIConsultationScreenState extends State<AIConsultationScreen>
           ],
         ),
         actions: [
-          Container(
-            margin: const EdgeInsets.only(right: 16),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: const Color(0xFF2E7D89).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.smart_toy,
-                  size: 16,
-                  color: const Color(0xFF2E7D89),
-                ),
-                const SizedBox(width: 4),
-                const Text(
-                  'AI Doctor',
-                  style: TextStyle(
-                    color: Color(0xFF2E7D89),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
+          _buildAppBarActions(),
         ],
       ),
       body: FadeTransition(
@@ -479,39 +459,307 @@ class _AIConsultationScreenState extends State<AIConsultationScreen>
     _scrollToBottom();
   }
 
-  void _sendMessage() {
+  void _sendMessage() async {
     String message = _messageController.text.trim();
     if (message.isEmpty) return;
 
     _addUserMessage(message);
     _messageController.clear();
 
+    // Extract symptoms from user messages
+    _extractedSymptoms.add(message.toLowerCase());
+
     // Simulate AI typing
     setState(() {
       _isTyping = true;
     });
 
-    Timer(const Duration(seconds: 2), () {
-      setState(() {
-        _isTyping = false;
-        _currentQuestionIndex++;
-      });
+    try {
+      if (_currentQuestionIndex < _initialQuestions.length - 1) {
+        // Continue with next question
+        await Future.delayed(const Duration(seconds: 2));
 
-      if (_currentQuestionIndex < _initialQuestions.length) {
+        setState(() {
+          _isTyping = false;
+          _currentQuestionIndex++;
+        });
+
         _addAIMessage(_initialQuestions[_currentQuestionIndex]);
       } else {
-        // End consultation
-        _addAIMessage(
-          "Terima kasih atas informasi yang Anda berikan. Saya sedang menganalisis gejala Anda untuk memberikan rekomendasi terbaik. Silakan tunggu sebentar...",
+        // Final question answered - perform AI screening
+        await _performRealAIScreening();
+      }
+    } catch (e) {
+      setState(() {
+        _isTyping = false;
+      });
+
+      _addAIMessage(
+          "Maaf, terjadi kesalahan saat memproses. Silakan coba lagi atau hubungi dokter langsung.");
+      print('❌ AI consultation error: $e');
+    }
+  }
+
+  Future<void> _performRealAIScreening() async {
+    try {
+      setState(() {
+        _isProcessingAI = true;
+        _isTyping = false;
+      });
+
+      _addAIMessage(
+          "Terima kasih atas informasi yang Anda berikan. Saya sedang menganalisis gejala Anda menggunakan AI...");
+
+      // Convert chat history to proper format
+      List<Map<String, dynamic>> chatHistory = _messages
+          .map((msg) => {
+                'text': msg.text,
+                'isUser': msg.isUser,
+              })
+          .toList();
+
+      try {
+        // Call real AI service
+        _aiResult = await ConsultationService.performAIScreening(
+          symptoms: _extractedSymptoms,
+          chatHistory: chatHistory,
         );
 
-        Timer(const Duration(seconds: 3), () {
-          setState(() {
-            _isConsultationComplete = true;
-          });
-        });
+        // Show AI analysis result
+        await Future.delayed(const Duration(seconds: 2));
+
+        String resultMessage = _buildAIResultMessage(_aiResult!);
+        _addAIMessage(resultMessage);
+
+        print('✅ AI Analysis completed successfully');
+      } catch (e) {
+        print('❌ AI API Error: $e');
+
+        // Show fallback message
+        _addAIMessage(
+            "Sistem AI sedang mengalami gangguan. Saya akan memberikan analisis berdasarkan pengalaman medis terdahulu.");
+
+        // Create fallback result
+        _aiResult = _createFallbackResult();
+
+        await Future.delayed(const Duration(seconds: 1));
+        String resultMessage = _buildAIResultMessage(_aiResult!);
+        _addAIMessage(resultMessage);
       }
-    });
+
+      // Wait a bit then complete consultation
+      await Future.delayed(const Duration(seconds: 2));
+
+      setState(() {
+        _isConsultationComplete = true;
+        _isProcessingAI = false;
+      });
+    } catch (e) {
+      print('❌ General error in AI screening: $e');
+
+      setState(() {
+        _isProcessingAI = false;
+        _isTyping = false;
+      });
+
+      _addAIMessage(
+          "Maaf, terjadi kesalahan sistem. Silakan coba lagi atau hubungi dokter langsung untuk konsultasi.");
+
+      // Still allow to complete consultation
+      await Future.delayed(const Duration(seconds: 2));
+      setState(() {
+        _isConsultationComplete = true;
+      });
+    }
+  }
+
+  AIScreeningResult _createFallbackResult() {
+    // Simple fallback logic based on symptoms
+    String severity = 'MEDIUM';
+    bool needsDoctor = true;
+
+    String symptomsText = _extractedSymptoms.join(' ').toLowerCase();
+
+    if (symptomsText.contains('ringan') ||
+        symptomsText.contains('tidak sakit')) {
+      severity = 'LOW';
+      needsDoctor = false;
+    } else if (symptomsText.contains('parah') ||
+        symptomsText.contains('sangat sakit')) {
+      severity = 'HIGH';
+    }
+
+    return AIScreeningResult(
+      consultationId: 'fallback_${DateTime.now().millisecondsSinceEpoch}',
+      severity: severity,
+      recommendation: needsDoctor ? 'DOCTOR_CONSULTATION' : 'SELF_CARE',
+      message: needsDoctor
+          ? 'Berdasarkan gejala yang Anda sampaikan, disarankan untuk berkonsultasi dengan dokter untuk evaluasi lebih lanjut.'
+          : 'Gejala yang Anda alami tergolong ringan. Istirahat yang cukup dan pola hidup sehat dapat membantu pemulihan.',
+      needsDoctorConsultation: needsDoctor,
+      estimatedFee: needsDoctor ? 25000 : 0,
+      confidence: 0.7,
+      symptomsAnalysis: {
+        'primary_symptoms': _extractedSymptoms,
+        'fallback_mode': true
+      },
+    );
+  }
+
+  String _buildAIResultMessage(AIScreeningResult result) {
+    String severityText = '';
+    String iconText = '';
+
+    switch (result.severity) {
+      case 'LOW':
+        severityText = 'RINGAN';
+        iconText = '✅';
+        break;
+      case 'MEDIUM':
+        severityText = 'SEDANG';
+        iconText = '⚠️';
+        break;
+      case 'HIGH':
+        severityText = 'TINGGI';
+        iconText = '🚨';
+        break;
+      default:
+        severityText = result.severity;
+        iconText = '📋';
+    }
+
+    String message = "$iconText HASIL ANALISIS AI:\n\n";
+    message += "Tingkat Keparahan: $severityText\n";
+    message += "Tingkat Kepercayaan: ${(result.confidence * 100).toInt()}%\n\n";
+    message += result.message + "\n\n";
+
+    if (result.needsDoctorConsultation) {
+      message +=
+          "💰 Estimasi biaya konsultasi: Rp ${result.estimatedFee.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.')}\n\n";
+      message +=
+          "Silakan klik 'Lihat Hasil Konsultasi' untuk melihat detail lengkap dan melanjutkan ke konsultasi dokter.";
+    } else {
+      message +=
+          "Anda dapat mengikuti saran yang diberikan. Namun jika kondisi memburuk, segera konsultasi dengan dokter.";
+    }
+
+    return message;
+  }
+
+  void _viewResults() {
+    if (_aiResult != null) {
+      // Pass real AI result to result screen
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ConsultationResultScreen(
+            chatHistory: _messages,
+            aiResult: _aiResult!, // Pass real AI result
+          ),
+        ),
+      );
+    } else {
+      // Fallback to original mock behavior
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ConsultationResultScreen(
+            chatHistory: _messages,
+          ),
+        ),
+      );
+    }
+  }
+
+  Widget _buildAppBarActions() {
+    return Row(
+      children: [
+        IconButton(
+          onPressed: _testAIConnection,
+          icon: Icon(
+            Icons.wifi,
+            color: const Color(0xFF2E7D89),
+            size: 20,
+          ),
+        ),
+        Container(
+          margin: const EdgeInsets.only(right: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: const Color(0xFF2E7D89).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.smart_toy,
+                size: 16,
+                color: const Color(0xFF2E7D89),
+              ),
+              const SizedBox(width: 4),
+              const Text(
+                'AI Doctor',
+                style: TextStyle(
+                  color: Color(0xFF2E7D89),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _testAIConnection() async {
+    try {
+      _showSnackBar('Testing AI connection...', isLoading: true);
+
+      bool isConnected = await ConsultationService.testAIConnection();
+
+      if (isConnected) {
+        _showSnackBar('✅ AI connection successful!');
+      } else {
+        _showSnackBar('❌ AI connection failed', isError: true);
+      }
+    } catch (e) {
+      _showSnackBar('❌ AI connection error: ${e.toString()}', isError: true);
+    }
+  }
+
+  void _showSnackBar(String message,
+      {bool isError = false, bool isLoading = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            if (isLoading)
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+            else
+              Icon(
+                isError ? Icons.error : Icons.check_circle,
+                color: Colors.white,
+                size: 16,
+              ),
+            const SizedBox(width: 8),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: isError ? Colors.red : const Color(0xFF2E7D89),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
   }
 
   void _scrollToBottom() {
@@ -524,16 +772,5 @@ class _AIConsultationScreenState extends State<AIConsultationScreen>
         );
       }
     });
-  }
-
-  void _viewResults() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ConsultationResultScreen(
-          chatHistory: _messages,
-        ),
-      ),
-    );
   }
 }

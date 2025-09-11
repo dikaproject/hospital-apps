@@ -68,20 +68,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
 
+    // Check if user is logged in
+    if (_currentUser == null) {
+      _showErrorSnackBar('User tidak ditemukan. Silakan login ulang.');
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
+      print('🔄 Current user: ${_currentUser?.email}');
+      print('🔄 Token exists: ${AuthService.getCurrentToken() != null}');
+
+      // Use the improved AuthService method
       final fingerprintData = await AuthService.registerFingerprint();
 
       if (fingerprintData != null) {
-        // TODO: Update fingerprint di backend
+        // Refresh user data from server
+        await _refreshUserData();
+
         _showSuccessSnackBar('Fingerprint berhasil didaftarkan!');
-        _loadUserData(); // Refresh user data
+        _loadUserData(); // Refresh UI
       } else {
         _showErrorSnackBar('Registrasi fingerprint dibatalkan');
       }
     } catch (e) {
-      _showErrorSnackBar('Error: ${e.toString()}');
+      print('❌ Settings fingerprint registration error: ${e.toString()}');
+
+      if (e.toString().contains('User not logged in')) {
+        _showErrorSnackBar('Sesi login berakhir. Silakan login ulang.');
+
+        // Redirect to login
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const AuthScreen()),
+          (route) => false,
+        );
+      } else {
+        _showErrorSnackBar('Error: ${e.toString()}');
+      }
     } finally {
       setState(() => _isLoading = false);
     }
@@ -228,6 +252,83 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _removeFingerprint() async {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Hapus Fingerprint'),
+        content: const Text(
+            'Apakah Anda yakin ingin menghapus fingerprint? Anda harus login dengan NIK dan password.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.of(context).pop();
+
+              setState(() => _isLoading = true);
+
+              try {
+                // Call backend to remove fingerprint
+                final token = AuthService.getCurrentToken();
+                if (token != null) {
+                  print('🗑️ Attempting to remove fingerprint from server...');
+
+                  final response = await HttpService.delete(
+                    '/api/users/remove-fingerprint',
+                    token: token,
+                  );
+
+                  print(
+                      '📥 Remove fingerprint response: ${response.statusCode} - ${response.body}');
+
+                  if (response.statusCode == 200) {
+                    final responseData = json.decode(response.body);
+                    if (responseData['success'] == true) {
+                      // Clear ALL local fingerprint data
+                      await AuthService.clearFingerprintData();
+
+                      print(
+                          '✅ Fingerprint removed from server and local storage');
+
+                      // Refresh user data from server
+                      await _refreshUserData();
+
+                      _showSuccessSnackBar('Fingerprint berhasil dihapus');
+                      _loadUserData(); // Refresh UI
+                    } else {
+                      throw Exception(responseData['message'] ??
+                          'Failed to remove fingerprint');
+                    }
+                  } else {
+                    final errorData = json.decode(response.body);
+                    throw Exception(
+                        errorData['message'] ?? 'Failed to remove fingerprint');
+                  }
+                } else {
+                  throw Exception('Authentication token not found');
+                }
+              } catch (e) {
+                print('❌ Remove fingerprint error: ${e.toString()}');
+                _showErrorSnackBar('Error: ${e.toString()}');
+              } finally {
+                setState(() => _isLoading = false);
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFE74C3C),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -306,8 +407,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ? 'Fingerprint terdaftar'
                             : 'Daftarkan fingerprint',
                         trailing: _currentUser!.fingerprintData != null
-                            ? const Icon(Icons.check_circle,
-                                color: Colors.green)
+                            ? Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.check_circle,
+                                      color: Colors.green),
+                                  const SizedBox(width: 8),
+                                  TextButton(
+                                    onPressed: _removeFingerprint,
+                                    child: const Text('Hapus',
+                                        style: TextStyle(color: Colors.red)),
+                                  ),
+                                ],
+                              )
                             : null,
                         onTap: _currentUser!.fingerprintData == null &&
                                 _isBiometricAvailable

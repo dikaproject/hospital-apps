@@ -119,17 +119,23 @@ class UserService {
     }
   }
 
-  // Register fingerprint
+  // Register fingerprint - FIXED VERSION
   static Future<bool> registerFingerprint(String fingerprintData) async {
     try {
       final token = AuthService.getCurrentToken();
       if (token == null) throw Exception('No authentication token');
 
-      final response = await HttpService.post(
+      print('🔄 Registering fingerprint: $fingerprintData');
+
+      final response = await HttpService.put(
+        // Changed to PUT to match backend
         '/api/users/register-fingerprint',
         {'fingerprintData': fingerprintData},
         token: token,
       );
+
+      print(
+          '📥 Fingerprint register response: ${response.statusCode} - ${response.body}');
 
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
@@ -139,6 +145,7 @@ class UserService {
       final errorData = json.decode(response.body);
       throw Exception(errorData['message'] ?? 'Register fingerprint failed');
     } catch (e) {
+      print('❌ Register fingerprint error: ${e.toString()}');
       throw Exception('Register fingerprint failed: ${e.toString()}');
     }
   }

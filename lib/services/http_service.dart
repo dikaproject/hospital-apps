@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 
 class HttpService {
   // Ngrok URL - Ganti dengan URL ngrok kamu
-  static const String _baseUrl = 'https://11ab70ee4810.ngrok-free.app';
+  static const String _baseUrl = 'https://a7e40564e95d.ngrok-free.app';
 
   static const Duration _timeout = Duration(seconds: 30);
 

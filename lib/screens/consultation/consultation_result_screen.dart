@@ -7,10 +7,12 @@ import 'general_doctor_call_screen.dart';
 
 class ConsultationResultScreen extends StatefulWidget {
   final List<ChatMessage> chatHistory;
+  final AIScreeningResult? aiResult; // Add this parameter
 
   const ConsultationResultScreen({
     super.key,
     required this.chatHistory,
+    this.aiResult, // Add this parameter
   });
 
   @override
@@ -47,7 +49,17 @@ class _ConsultationResultScreenState extends State<ConsultationResultScreen>
   }
 
   void _analyzeConsultation() {
-    // Simulate AI analysis
+    // Check if we already have AI result from backend
+    if (widget.aiResult != null) {
+      setState(() {
+        _result = _convertAIResultToConsultationResult(widget.aiResult!);
+        _isAnalyzing = false;
+      });
+      _animationController.forward();
+      return;
+    }
+
+    // Fallback to mock analysis if no AI result
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted) {
         setState(() {
@@ -57,6 +69,84 @@ class _ConsultationResultScreenState extends State<ConsultationResultScreen>
         _animationController.forward();
       }
     });
+  }
+
+  // Add method to convert AI result to ConsultationResult
+  ConsultationResult _convertAIResultToConsultationResult(
+      AIScreeningResult aiResult) {
+    ConsultationSeverity severity;
+    switch (aiResult.severity.toUpperCase()) {
+      case 'LOW':
+        severity = ConsultationSeverity.low;
+        break;
+      case 'HIGH':
+        severity = ConsultationSeverity.high;
+        break;
+      default:
+        severity = ConsultationSeverity.medium;
+    }
+
+    return ConsultationResult(
+      severity: severity,
+      title: _getSeverityTitle(severity),
+      description: aiResult.message,
+      recommendations: _getRecommendationsFromAI(aiResult),
+      followUp: _getFollowUpFromAI(aiResult),
+      doctorSpecialty: aiResult.needsDoctorConsultation ? 'Dokter Umum' : null,
+      isUrgent: severity == ConsultationSeverity.high,
+    );
+  }
+
+  String _getSeverityTitle(ConsultationSeverity severity) {
+    switch (severity) {
+      case ConsultationSeverity.low:
+        return 'Keluhan Ringan';
+      case ConsultationSeverity.medium:
+        return 'Keluhan Sedang';
+      case ConsultationSeverity.high:
+        return 'Keluhan Serius';
+    }
+  }
+
+  List<String> _getRecommendationsFromAI(AIScreeningResult aiResult) {
+    // Extract recommendations from AI analysis
+    if (aiResult.symptomsAnalysis != null &&
+        aiResult.symptomsAnalysis!['recommendations'] != null) {
+      return List<String>.from(aiResult.symptomsAnalysis!['recommendations']);
+    }
+
+    // Default recommendations based on severity
+    switch (aiResult.severity.toUpperCase()) {
+      case 'LOW':
+        return [
+          'Istirahat yang cukup',
+          'Perbanyak minum air putih',
+          'Konsumsi makanan bergizi',
+          'Monitor kondisi selama 2-3 hari'
+        ];
+      case 'HIGH':
+        return [
+          'Segera konsultasi dengan dokter',
+          'Jangan tunda pengobatan',
+          'Siapkan riwayat medis lengkap',
+          'Dampingi dengan keluarga'
+        ];
+      default:
+        return [
+          'Konsultasi dengan dokter dalam 24 jam',
+          'Istirahat yang cukup',
+          'Hindari aktivitas berat',
+          'Monitor gejala secara berkala'
+        ];
+    }
+  }
+
+  String _getFollowUpFromAI(AIScreeningResult aiResult) {
+    if (aiResult.needsDoctorConsultation) {
+      return 'Disarankan untuk konsultasi dengan dokter untuk evaluasi lebih lanjut dan mendapatkan penanganan yang tepat.';
+    } else {
+      return 'Pantau kondisi selama 3-5 hari. Jika kondisi memburuk atau tidak membaik, segera konsultasi dengan dokter.';
+    }
   }
 
   ConsultationResult _generateMockResult() {
