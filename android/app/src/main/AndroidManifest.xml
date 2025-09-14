@@ -8,10 +8,17 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
     
+    <!-- Add these for notifications -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    
     <application
         android:label="HospitalLink"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -29,6 +36,14 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        
+        <!-- Add notification receiver -->
+        <receiver android:name="me.carda.awesome_notifications.core.receivers.NotificationReceiver"
+            android:exported="false" />
+
+        <receiver android:name="me.carda.awesome_notifications.core.receivers.RefreshScheduleReceiver"
+            android:exported="false" />
+            
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

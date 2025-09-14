@@ -9,6 +9,8 @@ class ConsultationService {
   static Future<AIScreeningResult> performAIScreening({
     required List<String> symptoms,
     List<Map<String, dynamic>>? chatHistory,
+    int questionCount = 0,
+    String? consultationId,
   }) async {
     try {
       final userId = AuthService.getCurrentUser()?.id;
@@ -16,7 +18,7 @@ class ConsultationService {
         throw Exception('User not authenticated');
       }
 
-      print('🤖 Performing AI screening with symptoms: $symptoms');
+      print('🤖 Performing AI screening - Question $questionCount');
 
       final response = await HttpService.post(
         '/api/consultations/ai-screening',
@@ -24,12 +26,13 @@ class ConsultationService {
           'userId': userId,
           'symptoms': symptoms,
           'chatHistory': chatHistory ?? [],
+          'questionCount': questionCount,
+          if (consultationId != null) 'consultationId': consultationId,
         },
         token: AuthService.getCurrentToken(),
       );
 
-      print(
-          '📥 AI Screening response: ${response.statusCode} - ${response.body}');
+      print('📥 AI Screening response: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
@@ -232,6 +235,46 @@ class ConsultationService {
     } catch (e) {
       print('❌ Get consultation history error: ${e.toString()}');
       throw Exception('Failed to get consultation history: ${e.toString()}');
+    }
+  }
+
+  // Continue AI consultation with user response
+  static Future<AIScreeningResult> continueAIConsultation({
+    required String consultationId,
+    required String userResponse,
+    required List<Map<String, dynamic>> chatHistory,
+  }) async {
+    try {
+      print('🔄 Continuing AI consultation: $consultationId');
+
+      final response = await HttpService.post(
+        '/api/consultations/continue-ai',
+        {
+          'consultationId': consultationId,
+          'userResponse': userResponse,
+          'chatHistory': chatHistory,
+        },
+        token: AuthService.getCurrentToken(),
+      );
+
+      print('📥 Continue consultation response: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+
+        if (responseData['success'] == true) {
+          return AIScreeningResult.fromJson(responseData['data']);
+        } else {
+          throw Exception(
+              responseData['message'] ?? 'Continue consultation failed');
+        }
+      } else {
+        final errorData = json.decode(response.body);
+        throw Exception(errorData['message'] ?? 'Continue consultation failed');
+      }
+    } catch (e) {
+      print('❌ Continue consultation error: ${e.toString()}');
+      throw Exception('Continue consultation failed: ${e.toString()}');
     }
   }
 }

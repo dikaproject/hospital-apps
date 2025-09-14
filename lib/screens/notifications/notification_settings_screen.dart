@@ -250,7 +250,7 @@ class _NotificationSettingsScreenState
                   Icon(Icons.info, color: Color(0xFF3498DB), size: 20),
                   SizedBox(width: 8),
                   Text(
-                    'Test Pengaturan Notifikasi',
+                    'Test Push Notification Real',
                     style: TextStyle(
                       color: Color(0xFF3498DB),
                       fontSize: 14,
@@ -261,13 +261,69 @@ class _NotificationSettingsScreenState
               ),
               const SizedBox(height: 8),
               const Text(
-                'Gunakan tombol di bawah untuk menguji apakah notifikasi bekerja dengan pengaturan saat ini.',
+                'Test notifikasi yang akan muncul di status bar Android seperti WhatsApp, Instagram, dll.',
                 style: TextStyle(
                   color: Color(0xFF3498DB),
                   fontSize: 12,
                 ),
               ),
               const SizedBox(height: 12),
+
+              // Main real notification test
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed:
+                      _pushNotifications ? _testRealPushNotification : null,
+                  icon: const Icon(Icons.notifications_active, size: 18),
+                  label: const Text('🔔 Test Push Notification Real',
+                      style:
+                          TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFE74C3C),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // Multiple notification types test
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed:
+                      _pushNotifications ? _testAllNotificationTypes : null,
+                  icon: const Icon(Icons.notifications_none, size: 16),
+                  label: const Text('Test Semua Jenis Notifikasi',
+                      style: TextStyle(fontSize: 12)),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF2ECC71),
+                    side: const BorderSide(color: Color(0xFF2ECC71)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 8),
+
+              // Basic tests
+              const Text(
+                'Test Dasar:',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF3498DB),
+                ),
+              ),
+              const SizedBox(height: 8),
+
               Row(
                 children: [
                   Expanded(
@@ -277,8 +333,8 @@ class _NotificationSettingsScreenState
                         _soundEnabled ? Icons.volume_up : Icons.volume_off,
                         size: 16,
                       ),
-                      label: const Text('Test Suara',
-                          style: TextStyle(fontSize: 12)),
+                      label:
+                          const Text('Suara', style: TextStyle(fontSize: 11)),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: const Color(0xFF3498DB),
                         side: const BorderSide(color: Color(0xFF3498DB)),
@@ -296,8 +352,23 @@ class _NotificationSettingsScreenState
                             : Icons.phone_android,
                         size: 16,
                       ),
-                      label: const Text('Test Getar',
-                          style: TextStyle(fontSize: 12)),
+                      label:
+                          const Text('Getar', style: TextStyle(fontSize: 11)),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF3498DB),
+                        side: const BorderSide(color: Color(0xFF3498DB)),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed:
+                          _pushNotifications ? _testInAppNotification : null,
+                      icon: const Icon(Icons.notification_add, size: 16),
+                      label:
+                          const Text('In-App', style: TextStyle(fontSize: 11)),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: const Color(0xFF3498DB),
                         side: const BorderSide(color: Color(0xFF3498DB)),
@@ -307,22 +378,95 @@ class _NotificationSettingsScreenState
                   ),
                 ],
               ),
+
+              const SizedBox(height: 12),
+
+              // Specific notification type tests
+              const Text(
+                'Test Jenis Spesifik:',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF3498DB),
+                ),
+              ),
               const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _pushNotifications ? _testFullNotification : null,
-                  icon: const Icon(Icons.notification_add, size: 16),
-                  label: const Text('Test Notifikasi Lengkap',
-                      style: TextStyle(fontSize: 12)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF3498DB),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _pushNotifications && _queueNotifications
+                          ? _testQueueNotification
+                          : null,
+                      icon: const Icon(Icons.schedule, size: 14),
+                      label:
+                          const Text('Antrean', style: TextStyle(fontSize: 10)),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF3498DB),
+                        side: const BorderSide(color: Color(0xFF3498DB)),
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                      ),
                     ),
                   ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _pushNotifications && _appointmentNotifications
+                          ? _testAppointmentNotification
+                          : null,
+                      icon: const Icon(Icons.calendar_today, size: 14),
+                      label:
+                          const Text('Jadwal', style: TextStyle(fontSize: 10)),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF9B59B6),
+                        side: const BorderSide(color: Color(0xFF9B59B6)),
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _pushNotifications && _labResultNotifications
+                          ? _testLabNotification
+                          : null,
+                      icon: const Icon(Icons.science, size: 14),
+                      label: const Text('Lab', style: TextStyle(fontSize: 10)),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF2ECC71),
+                        side: const BorderSide(color: Color(0xFF2ECC71)),
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 12),
+
+              // Instructions
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.orange, size: 16),
+                    SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Notifikasi push akan muncul di status bar Android. Pastikan permission notifikasi sudah diizinkan.',
+                        style: TextStyle(
+                          color: Colors.orange,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -513,6 +657,36 @@ class _NotificationSettingsScreenState
   void _testFullNotification() {
     NotificationService.sendTestNotification();
     _showSnackBar('Test notifikasi lengkap dikirim');
+  }
+
+  void _testRealPushNotification() {
+    NotificationService.testRealNotification();
+    _showSnackBar('🔔 Test push notification dikirim! Cek status bar Android.');
+  }
+
+  void _testAllNotificationTypes() {
+    NotificationService.testAllNotificationTypes();
+    _showSnackBar('Mengirim berbagai jenis notifikasi push...');
+  }
+
+  void _testInAppNotification() {
+    NotificationService.sendTestNotification();
+    _showSnackBar('Test notifikasi in-app dikirim!');
+  }
+
+  void _testQueueNotification() {
+    NotificationService.testQueueNotification();
+    _showSnackBar('Test notifikasi antrean dikirim!');
+  }
+
+  void _testAppointmentNotification() {
+    NotificationService.testAppointmentNotification();
+    _showSnackBar('Test notifikasi jadwal dikirim!');
+  }
+
+  void _testLabNotification() {
+    NotificationService.testLabResultNotification();
+    _showSnackBar('Test notifikasi lab dikirim!');
   }
 
   void _saveSettings() {

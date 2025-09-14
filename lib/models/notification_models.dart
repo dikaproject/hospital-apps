@@ -1,16 +1,18 @@
+import 'package:flutter/material.dart';
+
 enum NotificationType {
   queue,
   appointment,
   labResult,
   payment,
   system,
-  healthTip,
+  healthTip
 }
 
 enum NotificationPriority {
   high,
   medium,
-  low,
+  low
 }
 
 class HospitalNotification {
@@ -20,9 +22,9 @@ class HospitalNotification {
   final NotificationType type;
   final NotificationPriority priority;
   final DateTime timestamp;
-  bool isRead;
+  bool isRead; // Changed to mutable for state updates
+  final String? hospitalName;
   final String? actionUrl;
-  final String hospitalName;
   final Map<String, dynamic>? relatedData;
 
   HospitalNotification({
@@ -33,10 +35,86 @@ class HospitalNotification {
     required this.priority,
     required this.timestamp,
     this.isRead = false,
+    this.hospitalName,
     this.actionUrl,
-    required this.hospitalName,
     this.relatedData,
   });
+
+  // FIXED: Better null handling in fromJson
+  factory HospitalNotification.fromJson(Map<String, dynamic> json) {
+    return HospitalNotification(
+      id: json['id']?.toString() ?? '',
+      title: json['title']?.toString() ?? 'Notifikasi',
+      message: json['message']?.toString() ?? 'Pesan kosong',
+      type: _parseNotificationType(json['type']),
+      priority: _parseNotificationPriority(json['priority']),
+      timestamp: _parseDateTime(json['createdAt'] ?? json['timestamp']),
+      isRead: json['isRead'] == true,
+      hospitalName: json['hospitalName']?.toString(),
+      actionUrl: json['actionUrl']?.toString(),
+      relatedData: json['relatedData'] != null 
+          ? Map<String, dynamic>.from(json['relatedData']) 
+          : null,
+    );
+  }
+
+  // Helper method to safely parse DateTime
+  static DateTime _parseDateTime(dynamic dateValue) {
+    if (dateValue == null) return DateTime.now();
+    
+    try {
+      if (dateValue is String) {
+        return DateTime.parse(dateValue);
+      } else if (dateValue is DateTime) {
+        return dateValue;
+      } else {
+        return DateTime.now();
+      }
+    } catch (e) {
+      print('Error parsing date: $dateValue - $e');
+      return DateTime.now();
+    }
+  }
+
+  // Helper method to parse notification type from string
+  static NotificationType _parseNotificationType(dynamic typeValue) {
+    if (typeValue == null) return NotificationType.system;
+    
+    final typeString = typeValue.toString().toUpperCase();
+    switch (typeString) {
+      case 'QUEUE':
+        return NotificationType.queue;
+      case 'APPOINTMENT':
+        return NotificationType.appointment;
+      case 'LAB_RESULT':
+        return NotificationType.labResult;
+      case 'PAYMENT':
+        return NotificationType.payment;
+      case 'SYSTEM':
+        return NotificationType.system;
+      case 'HEALTH_TIP':
+        return NotificationType.healthTip;
+      default:
+        return NotificationType.system;
+    }
+  }
+
+  // Helper method to parse notification priority from string
+  static NotificationPriority _parseNotificationPriority(dynamic priorityValue) {
+    if (priorityValue == null) return NotificationPriority.medium;
+    
+    final priorityString = priorityValue.toString().toUpperCase();
+    switch (priorityString) {
+      case 'HIGH':
+        return NotificationPriority.high;
+      case 'MEDIUM':
+        return NotificationPriority.medium;
+      case 'LOW':
+        return NotificationPriority.low;
+      default:
+        return NotificationPriority.medium;
+    }
+  }
 
   // Convert to JSON
   Map<String, dynamic> toJson() {
@@ -44,39 +122,17 @@ class HospitalNotification {
       'id': id,
       'title': title,
       'message': message,
-      'type': type.name,
-      'priority': priority.name,
+      'type': type.toString().split('.').last.toUpperCase(),
+      'priority': priority.toString().split('.').last.toUpperCase(),
       'timestamp': timestamp.toIso8601String(),
       'isRead': isRead,
-      'actionUrl': actionUrl,
       'hospitalName': hospitalName,
+      'actionUrl': actionUrl,
       'relatedData': relatedData,
     };
   }
 
-  // Create from JSON
-  factory HospitalNotification.fromJson(Map<String, dynamic> json) {
-    return HospitalNotification(
-      id: json['id'],
-      title: json['title'],
-      message: json['message'],
-      type: NotificationType.values.firstWhere(
-        (e) => e.name == json['type'],
-        orElse: () => NotificationType.system,
-      ),
-      priority: NotificationPriority.values.firstWhere(
-        (e) => e.name == json['priority'],
-        orElse: () => NotificationPriority.medium,
-      ),
-      timestamp: DateTime.parse(json['timestamp']),
-      isRead: json['isRead'] ?? false,
-      actionUrl: json['actionUrl'],
-      hospitalName: json['hospitalName'],
-      relatedData: json['relatedData'],
-    );
-  }
-
-  // Copy with method
+  // Create a copy with updated fields
   HospitalNotification copyWith({
     String? id,
     String? title,
@@ -85,8 +141,8 @@ class HospitalNotification {
     NotificationPriority? priority,
     DateTime? timestamp,
     bool? isRead,
-    String? actionUrl,
     String? hospitalName,
+    String? actionUrl,
     Map<String, dynamic>? relatedData,
   }) {
     return HospitalNotification(
@@ -97,14 +153,13 @@ class HospitalNotification {
       priority: priority ?? this.priority,
       timestamp: timestamp ?? this.timestamp,
       isRead: isRead ?? this.isRead,
-      actionUrl: actionUrl ?? this.actionUrl,
       hospitalName: hospitalName ?? this.hospitalName,
+      actionUrl: actionUrl ?? this.actionUrl,
       relatedData: relatedData ?? this.relatedData,
     );
   }
 }
 
-// Notification Settings Model
 class NotificationSettings {
   final bool pushNotifications;
   final bool soundEnabled;
@@ -134,23 +189,6 @@ class NotificationSettings {
     this.quietHoursEnd = '07:00',
   });
 
-  Map<String, dynamic> toJson() {
-    return {
-      'pushNotifications': pushNotifications,
-      'soundEnabled': soundEnabled,
-      'vibrationEnabled': vibrationEnabled,
-      'queueNotifications': queueNotifications,
-      'appointmentNotifications': appointmentNotifications,
-      'labResultNotifications': labResultNotifications,
-      'paymentNotifications': paymentNotifications,
-      'systemNotifications': systemNotifications,
-      'healthTipsNotifications': healthTipsNotifications,
-      'quietHoursEnabled': quietHoursEnabled,
-      'quietHoursStart': quietHoursStart,
-      'quietHoursEnd': quietHoursEnd,
-    };
-  }
-
   factory NotificationSettings.fromJson(Map<String, dynamic> json) {
     return NotificationSettings(
       pushNotifications: json['pushNotifications'] ?? true,
@@ -168,36 +206,20 @@ class NotificationSettings {
     );
   }
 
-  NotificationSettings copyWith({
-    bool? pushNotifications,
-    bool? soundEnabled,
-    bool? vibrationEnabled,
-    bool? queueNotifications,
-    bool? appointmentNotifications,
-    bool? labResultNotifications,
-    bool? paymentNotifications,
-    bool? systemNotifications,
-    bool? healthTipsNotifications,
-    bool? quietHoursEnabled,
-    String? quietHoursStart,
-    String? quietHoursEnd,
-  }) {
-    return NotificationSettings(
-      pushNotifications: pushNotifications ?? this.pushNotifications,
-      soundEnabled: soundEnabled ?? this.soundEnabled,
-      vibrationEnabled: vibrationEnabled ?? this.vibrationEnabled,
-      queueNotifications: queueNotifications ?? this.queueNotifications,
-      appointmentNotifications:
-          appointmentNotifications ?? this.appointmentNotifications,
-      labResultNotifications:
-          labResultNotifications ?? this.labResultNotifications,
-      paymentNotifications: paymentNotifications ?? this.paymentNotifications,
-      systemNotifications: systemNotifications ?? this.systemNotifications,
-      healthTipsNotifications:
-          healthTipsNotifications ?? this.healthTipsNotifications,
-      quietHoursEnabled: quietHoursEnabled ?? this.quietHoursEnabled,
-      quietHoursStart: quietHoursStart ?? this.quietHoursStart,
-      quietHoursEnd: quietHoursEnd ?? this.quietHoursEnd,
-    );
+  Map<String, dynamic> toJson() {
+    return {
+      'pushNotifications': pushNotifications,
+      'soundEnabled': soundEnabled,
+      'vibrationEnabled': vibrationEnabled,
+      'queueNotifications': queueNotifications,
+      'appointmentNotifications': appointmentNotifications,
+      'labResultNotifications': labResultNotifications,
+      'paymentNotifications': paymentNotifications,
+      'systemNotifications': systemNotifications,
+      'healthTipsNotifications': healthTipsNotifications,
+      'quietHoursEnabled': quietHoursEnabled,
+      'quietHoursStart': quietHoursStart,
+      'quietHoursEnd': quietHoursEnd,
+    };
   }
 }

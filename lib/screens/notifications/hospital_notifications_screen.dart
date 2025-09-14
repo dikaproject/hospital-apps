@@ -15,10 +15,17 @@ class HospitalNotificationsScreen extends StatefulWidget {
 class _HospitalNotificationsScreenState
     extends State<HospitalNotificationsScreen> with TickerProviderStateMixin {
   late TabController _tabController;
+  
+  // API Data
   List<HospitalNotification> _allNotifications = [];
   List<HospitalNotification> _unreadNotifications = [];
+  Map<String, dynamic> _summary = {};
+  
   bool _isLoading = true;
+  String? _error;
   String _selectedTypeFilter = 'all';
+  int _currentPage = 1;
+  bool _hasNextPage = false;
 
   @override
   void initState() {
@@ -33,98 +40,80 @@ class _HospitalNotificationsScreenState
     super.dispose();
   }
 
-  void _loadNotifications() {
-    Future.delayed(const Duration(seconds: 1), () {
+  Future<void> _loadNotifications() async {
+    try {
       setState(() {
-        _allNotifications = _generateNotifications();
-        _unreadNotifications =
-            _allNotifications.where((n) => !n.isRead).toList();
+        _isLoading = true;
+        _error = null;
+      });
+
+      // Load all notifications
+      final allResponse = await NotificationService.getNotifications(
+        page: 1,
+        limit: 50,
+        type: _selectedTypeFilter,
+        unreadOnly: false,
+      );
+
+      // Load unread notifications
+      final unreadResponse = await NotificationService.getNotifications(
+        page: 1,
+        limit: 50,
+        type: _selectedTypeFilter,
+        unreadOnly: true,
+      );
+
+      setState(() {
+        _allNotifications = allResponse.notifications;
+        _unreadNotifications = unreadResponse.notifications;
+        _summary = allResponse.summary;
+        _hasNextPage = allResponse.pagination['hasNext'] ?? false;
         _isLoading = false;
       });
-    });
+
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+      _showSnackBar('Gagal memuat notifikasi: $e');
+    }
   }
 
-  List<HospitalNotification> _generateNotifications() {
-    return [
-      HospitalNotification(
-        id: 'NOTIF_001',
-        title: 'Antrean Anda Hampir Tiba',
-        message:
-            'Nomor antrean A-15 akan dipanggil dalam 5 menit. Silakan bersiap ke ruang poli.',
-        type: NotificationType.queue,
-        priority: NotificationPriority.high,
-        timestamp: DateTime.now().subtract(const Duration(minutes: 10)),
-        isRead: false,
-        actionUrl: '/queue/detail/A-15',
-        hospitalName: 'RS Siloam Hospitals',
-        relatedData: {'queueNumber': 'A-15', 'estimatedTime': '5 menit'},
-      ),
-      HospitalNotification(
-        id: 'NOTIF_002',
-        title: 'Hasil Lab Tersedia',
-        message:
-            'Hasil pemeriksaan darah lengkap Anda sudah dapat dilihat. Klik untuk melihat detail.',
-        type: NotificationType.labResult,
-        priority: NotificationPriority.medium,
-        timestamp: DateTime.now().subtract(const Duration(hours: 2)),
-        isRead: false,
-        actionUrl: '/lab/results/LAB_001',
-        hospitalName: 'RS Hermina Kemayoran',
-        relatedData: {'testType': 'Darah Lengkap', 'resultDate': '27 Ags 2025'},
-      ),
-      HospitalNotification(
-        id: 'NOTIF_003',
-        title: 'Reminder Jadwal Konsultasi',
-        message:
-            'Jangan lupa konsultasi dengan Dr. Sarah Wijaya besok jam 10:00 di Poli Umum.',
-        type: NotificationType.appointment,
-        priority: NotificationPriority.medium,
-        timestamp: DateTime.now().subtract(const Duration(hours: 6)),
-        isRead: true,
-        actionUrl: '/schedule/appointment/APP_001',
-        hospitalName: 'RS Siloam Hospitals',
-        relatedData: {
-          'doctorName': 'Dr. Sarah Wijaya',
-          'appointmentTime': 'Besok 10:00'
-        },
-      ),
-      HospitalNotification(
-        id: 'NOTIF_004',
-        title: 'Update Sistem HospitalLink',
-        message:
-            'Fitur baru telah ditambahkan! Sekarang Anda dapat mengelola keluarga dengan lebih mudah.',
-        type: NotificationType.system,
-        priority: NotificationPriority.low,
-        timestamp: DateTime.now().subtract(const Duration(days: 1)),
-        isRead: true,
-        actionUrl: '/family/dashboard',
-        hospitalName: 'HospitalLink System',
-      ),
-      HospitalNotification(
-        id: 'NOTIF_005',
-        title: 'Pembayaran Berhasil',
-        message:
-            'Pembayaran konsultasi sebesar Rp 150.000 telah berhasil diproses.',
-        type: NotificationType.payment,
-        priority: NotificationPriority.medium,
-        timestamp: DateTime.now().subtract(const Duration(days: 2)),
-        isRead: true,
-        actionUrl: '/payment/receipt/PAY_001',
-        hospitalName: 'RS Harapan Kita',
-        relatedData: {'amount': 'Rp 150.000', 'paymentMethod': 'QRIS'},
-      ),
-      HospitalNotification(
-        id: 'NOTIF_006',
-        title: 'Info Kesehatan: Tips Hidup Sehat',
-        message:
-            'Jaga kesehatan dengan rutin olahraga dan konsumsi makanan bergizi seimbang.',
-        type: NotificationType.healthTip,
-        priority: NotificationPriority.low,
-        timestamp: DateTime.now().subtract(const Duration(days: 3)),
-        isRead: false,
-        hospitalName: 'Tim Medis HospitalLink',
-      ),
-    ];
+  Future<void> _refreshNotifications() async {
+    await _loadNotifications();
+  }
+
+  Future<void> _markAllAsRead() async {
+    try {
+      await NotificationService.markAllNotificationsAsRead();
+      await _refreshNotifications();
+      _showSnackBar('Semua notifikasi ditandai sudah dibaca');
+    } catch (e) {
+      _showSnackBar('Gagal menandai semua sebagai dibaca: $e');
+    }
+  }
+
+  Future<void> _handleNotificationTap(HospitalNotification notification) async {
+    // Mark as read if not already read
+    if (!notification.isRead) {
+      try {
+        await NotificationService.markNotificationAsRead(notification.id);
+        setState(() {
+          notification.isRead = true;
+          _unreadNotifications.removeWhere((n) => n.id == notification.id);
+        });
+      } catch (e) {
+        _showSnackBar('Gagal menandai sebagai dibaca: $e');
+      }
+    }
+
+    // Handle action
+    if (notification.actionUrl != null) {
+      _handleNotificationAction(notification);
+    } else {
+      _showSnackBar('Detail: ${notification.title}');
+    }
   }
 
   @override
@@ -132,7 +121,8 @@ class _HospitalNotificationsScreenState
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: _buildAppBar(),
-      body: _isLoading ? _buildLoadingView() : _buildContent(),
+      body: _isLoading ? _buildLoadingView() : 
+             _error != null ? _buildErrorView() : _buildContent(),
       floatingActionButton: _buildTestNotificationFAB(),
     );
   }
@@ -145,10 +135,10 @@ class _HospitalNotificationsScreenState
         icon: const Icon(Icons.arrow_back, color: Color(0xFF2E7D89)),
         onPressed: () => Navigator.pop(context),
       ),
-      title: const Column(
+      title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          const Text(
             'Notifikasi Rumah Sakit',
             style: TextStyle(
               color: Color(0xFF2C3E50),
@@ -157,8 +147,8 @@ class _HospitalNotificationsScreenState
             ),
           ),
           Text(
-            'Info terbaru dari rumah sakit',
-            style: TextStyle(
+            'Total: ${_summary['totalCount'] ?? 0} | Belum dibaca: ${_summary['unreadCount'] ?? 0}',
+            style: const TextStyle(
               color: Color(0xFF7F8C8D),
               fontSize: 11,
             ),
@@ -239,6 +229,37 @@ class _HospitalNotificationsScreenState
     );
   }
 
+  Widget _buildErrorView() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(
+            Icons.error_outline,
+            size: 64,
+            color: Colors.red,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Gagal memuat notifikasi',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _error ?? 'Unknown error',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: _refreshNotifications,
+            child: const Text('Coba Lagi'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildContent() {
     return TabBarView(
       controller: _tabController,
@@ -250,21 +271,15 @@ class _HospitalNotificationsScreenState
   }
 
   Widget _buildUnreadTab() {
-    final filteredNotifications =
-        _getFilteredNotifications(_unreadNotifications);
-
     return RefreshIndicator(
-      onRefresh: () async {
-        setState(() => _isLoading = true);
-        _loadNotifications();
-      },
+      onRefresh: _refreshNotifications,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (filteredNotifications.isEmpty) ...[
+            if (_unreadNotifications.isEmpty) ...[
               _buildEmptyState(
                 icon: Icons.notifications_none,
                 title: 'Tidak ada notifikasi baru',
@@ -273,8 +288,8 @@ class _HospitalNotificationsScreenState
             ] else ...[
               _buildQuickActions(),
               const SizedBox(height: 20),
-              ...filteredNotifications
-                  .map((notification) => _buildNotificationCard(notification)),
+              ...(_unreadNotifications.map((notification) => 
+                  _buildNotificationCard(notification))),
             ],
           ],
         ),
@@ -283,13 +298,8 @@ class _HospitalNotificationsScreenState
   }
 
   Widget _buildAllTab() {
-    final filteredNotifications = _getFilteredNotifications(_allNotifications);
-
     return RefreshIndicator(
-      onRefresh: () async {
-        setState(() => _isLoading = true);
-        _loadNotifications();
-      },
+      onRefresh: _refreshNotifications,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(20),
@@ -298,15 +308,15 @@ class _HospitalNotificationsScreenState
           children: [
             _buildSummaryCards(),
             const SizedBox(height: 20),
-            if (filteredNotifications.isEmpty) ...[
+            if (_allNotifications.isEmpty) ...[
               _buildEmptyState(
                 icon: Icons.notifications_off,
                 title: 'Belum ada notifikasi',
                 subtitle: 'Notifikasi akan muncul di sini',
               ),
             ] else ...[
-              ...filteredNotifications
-                  .map((notification) => _buildNotificationCard(notification)),
+              ...(_allNotifications.map((notification) => 
+                  _buildNotificationCard(notification))),
             ],
           ],
         ),
@@ -379,8 +389,11 @@ class _HospitalNotificationsScreenState
   }
 
   Widget _buildSummaryCards() {
-    final totalNotifications = _allNotifications.length;
-    final unreadCount = _unreadNotifications.length;
+    final totalNotifications = _summary['totalCount'] ?? 0;
+    final unreadCount = _summary['unreadCount'] ?? 0;
+    final typeCounts = _summary['typeCounts'] ?? {};
+    
+    // Calculate today's notifications (approximate from recent data)
     final todayNotifications = _allNotifications.where((n) {
       final today = DateTime.now();
       return n.timestamp.year == today.year &&
@@ -508,8 +521,7 @@ class _HospitalNotificationsScreenState
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color:
-                            _getTypeColor(notification.type).withOpacity(0.1),
+                        color: _getTypeColor(notification.type).withOpacity(0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Icon(
@@ -533,13 +545,14 @@ class _HospitalNotificationsScreenState
                               color: const Color(0xFF2C3E50),
                             ),
                           ),
-                          Text(
-                            notification.hospitalName,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Color(0xFF7F8C8D),
+                          if (notification.hospitalName != null)
+                            Text(
+                              notification.hospitalName!,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Color(0xFF7F8C8D),
+                              ),
                             ),
-                          ),
                         ],
                       ),
                     ),
@@ -609,13 +622,13 @@ class _HospitalNotificationsScreenState
                           color: const Color(0xFF2E7D89).withOpacity(0.1),
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: Row(
+                        child: const Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.touch_app,
+                            Icon(Icons.touch_app,
                                 color: Color(0xFF2E7D89), size: 12),
-                            const SizedBox(width: 4),
-                            const Text(
+                            SizedBox(width: 4),
+                            Text(
                               'Tap untuk aksi',
                               style: TextStyle(
                                 color: Color(0xFF2E7D89),
@@ -688,38 +701,7 @@ class _HospitalNotificationsScreenState
     );
   }
 
-  // Helper methods
-  List<HospitalNotification> _getFilteredNotifications(
-      List<HospitalNotification> notifications) {
-    if (_selectedTypeFilter == 'all') return notifications;
-
-    NotificationType? filterType;
-    switch (_selectedTypeFilter) {
-      case 'queue':
-        filterType = NotificationType.queue;
-        break;
-      case 'appointment':
-        filterType = NotificationType.appointment;
-        break;
-      case 'labResult':
-        filterType = NotificationType.labResult;
-        break;
-      case 'payment':
-        filterType = NotificationType.payment;
-        break;
-      case 'system':
-        filterType = NotificationType.system;
-        break;
-      case 'healthTip':
-        filterType = NotificationType.healthTip;
-        break;
-    }
-
-    return filterType != null
-        ? notifications.where((n) => n.type == filterType).toList()
-        : notifications;
-  }
-
+  // Helper methods (keep existing implementation)
   Color _getTypeColor(NotificationType type) {
     switch (type) {
       case NotificationType.queue:
@@ -802,10 +784,9 @@ class _HospitalNotificationsScreenState
             'all',
             'queue',
             'appointment',
-            'labResult',
+            'lab_result',
             'payment',
             'system',
-            'healthTip'
           ]
               .map(
                 (type) => RadioListTile<String>(
@@ -815,6 +796,7 @@ class _HospitalNotificationsScreenState
                   onChanged: (value) {
                     setState(() => _selectedTypeFilter = value!);
                     Navigator.pop(context);
+                    _loadNotifications(); // Reload with new filter
                   },
                 ),
               )
@@ -832,43 +814,14 @@ class _HospitalNotificationsScreenState
         return 'Antrean';
       case 'appointment':
         return 'Jadwal Konsultasi';
-      case 'labResult':
+      case 'lab_result':
         return 'Hasil Lab';
       case 'payment':
         return 'Pembayaran';
       case 'system':
         return 'Sistem';
-      case 'healthTip':
-        return 'Tips Kesehatan';
       default:
         return type;
-    }
-  }
-
-  void _markAllAsRead() {
-    setState(() {
-      for (var notification in _unreadNotifications) {
-        notification.isRead = true;
-      }
-      _unreadNotifications.clear();
-    });
-    _showSnackBar('Semua notifikasi ditandai sudah dibaca');
-  }
-
-  void _handleNotificationTap(HospitalNotification notification) {
-    // Mark as read
-    if (!notification.isRead) {
-      setState(() {
-        notification.isRead = true;
-        _unreadNotifications.remove(notification);
-      });
-    }
-
-    // Handle action
-    if (notification.actionUrl != null) {
-      _handleNotificationAction(notification);
-    } else {
-      _showSnackBar('Detail: ${notification.title}');
     }
   }
 
@@ -940,23 +893,9 @@ class _HospitalNotificationsScreenState
   void _sendTestNotification() {
     NotificationService.sendTestNotification();
     _showSnackBar('Test notifikasi berhasil dikirim!');
-
-    // Add test notification to list
-    setState(() {
-      final testNotif = HospitalNotification(
-        id: 'TEST_${DateTime.now().millisecondsSinceEpoch}',
-        title: 'Test Notifikasi',
-        message:
-            'Ini adalah test notifikasi untuk memastikan sistem berjalan dengan baik.',
-        type: NotificationType.system,
-        priority: NotificationPriority.low,
-        timestamp: DateTime.now(),
-        isRead: false,
-        hospitalName: 'HospitalLink Test',
-      );
-
-      _allNotifications.insert(0, testNotif);
-      _unreadNotifications.insert(0, testNotif);
+    // Refresh after sending test notification
+    Future.delayed(const Duration(seconds: 1), () {
+      _refreshNotifications();
     });
   }
 

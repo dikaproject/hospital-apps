@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
 import '../../services/auth_service.dart';
+import '../../services/dashboard_service.dart';
 import '../auth/auth_screen.dart';
 import '../queue/take_queue_screen.dart';
 import '../qr/qr_scan_screen.dart';
@@ -10,7 +11,8 @@ import '../lab/lab_results_screen.dart';
 import '../family/family_dashboard_screen.dart';
 import '../notifications/hospital_notifications_screen.dart';
 import '../settings/settings_screen.dart';
-import '../settings/edit_profile_screen.dart'; 
+import '../settings/edit_profile_screen.dart';
+import 'package:intl/intl.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -23,6 +25,11 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
 
+  // Dashboard data
+  DashboardData? _dashboardData;
+  bool _isLoading = true;
+  String? _error;
+
   @override
   void initState() {
     super.initState();
@@ -33,6 +40,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
+
+    _loadDashboardData();
     _animationController.forward();
   }
 
@@ -42,16 +51,45 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     super.dispose();
   }
 
+  Future<void> _loadDashboardData() async {
+    try {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+
+      final dashboardData = await DashboardService.getDashboardData();
+
+      setState(() {
+        _dashboardData = dashboardData;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+
+      _showSnackBar('Failed to load dashboard data: $e');
+    }
+  }
+
+  Future<void> _refreshData() async {
+    await _loadDashboardData();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final user = AuthService.getCurrentUser();
-
     return Scaffold(
       appBar: AppBar(
-        title: Text('HospitalLink'),
+        title: const Text('HospitalLink'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _refreshData,
+          ),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () {
@@ -67,28 +105,85 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       ),
       backgroundColor: const Color(0xFFF8FAFC),
       body: SafeArea(
-        child: FadeTransition(
-          opacity: _fadeAnimation,
-          child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            child: Column(
-              children: [
-                _buildHeroSection(user),
-                _buildQuickActions(),
-                _buildMyQueueStatus(),
-                _buildScheduleAndHistory(),
-                _buildLabAndFamily(),
-                _buildNotificationAndFeedback(),
-                const SizedBox(height: 20),
-              ],
-            ),
+        child: _isLoading
+            ? _buildLoadingScreen()
+            : _error != null
+                ? _buildErrorScreen()
+                : _buildMainContent(),
+      ),
+    );
+  }
+
+  Widget _buildLoadingScreen() {
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          CircularProgressIndicator(),
+          SizedBox(height: 16),
+          Text('Loading dashboard data...'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorScreen() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(
+            Icons.error_outline,
+            size: 64,
+            color: Colors.red,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Failed to load data',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _error ?? 'Unknown error',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: _refreshData,
+            child: const Text('Retry'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMainContent() {
+    return RefreshIndicator(
+      onRefresh: _refreshData,
+      child: FadeTransition(
+        opacity: _fadeAnimation,
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: Column(
+            children: [
+              _buildHeroSection(),
+              _buildQuickActions(),
+              if (_dashboardData?.queueStatus != null) _buildMyQueueStatus(),
+              _buildScheduleAndHistory(),
+              _buildLabAndFamily(),
+              _buildNotificationAndFeedback(),
+              const SizedBox(height: 20),
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _buildHeroSection(user) {
+  Widget _buildHeroSection() {
+    final user = _dashboardData?.user;
+
     return Container(
       width: double.infinity,
       decoration: const BoxDecoration(
@@ -135,21 +230,44 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: const Text(
-                          'Pasien Aktif',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: const Text(
+                              'Pasien Aktif',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
                           ),
-                        ),
+                          if (user?.age != null) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                '${user!.age} tahun',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ],
                   ),
@@ -158,7 +276,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                   children: [
                     _buildHeaderButton(
                       icon: Icons.notifications_outlined,
-                      badge: 2,
+                      badge: _dashboardData?.notifications.unreadCount ?? 0,
                       onTap: () => _showNotifications(),
                     ),
                     const SizedBox(width: 8),
@@ -209,7 +327,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                   shape: BoxShape.circle,
                 ),
                 child: Text(
-                  badge.toString(),
+                  badge > 99 ? '99+' : badge.toString(),
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 8,
@@ -314,8 +432,26 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildMyQueueStatus() {
+    final queueStatus = _dashboardData?.queueStatus;
+    if (queueStatus == null) return const SizedBox.shrink();
+
+    Color statusColor;
+    switch (queueStatus.status) {
+      case 'WAITING':
+        statusColor = const Color(0xFFF39C12);
+        break;
+      case 'CALLED':
+        statusColor = const Color(0xFF2ECC71);
+        break;
+      case 'IN_PROGRESS':
+        statusColor = const Color(0xFF3498DB);
+        break;
+      default:
+        statusColor = const Color(0xFF7F8C8D);
+    }
+
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20),
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
@@ -355,12 +491,12 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF2ECC71),
+                  color: statusColor,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Text(
-                  'AKTIF',
-                  style: TextStyle(
+                child: Text(
+                  queueStatus.statusText,
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
@@ -383,9 +519,9 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                       fontSize: 12,
                     ),
                   ),
-                  const Text(
-                    'A-15',
-                    style: TextStyle(
+                  Text(
+                    queueStatus.queueNumber,
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
@@ -403,9 +539,9 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                       fontSize: 12,
                     ),
                   ),
-                  const Text(
-                    '~15 menit',
-                    style: TextStyle(
+                  Text(
+                    queueStatus.estimatedTimeText,
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -416,13 +552,23 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
             ],
           ),
           const SizedBox(height: 12),
-          const Text(
-            'Poli Umum - Dr. Sarah',
-            style: TextStyle(
+          Text(
+            '${queueStatus.doctor.specialty} - ${queueStatus.doctor.name}',
+            style: const TextStyle(
               color: Colors.white70,
               fontSize: 12,
             ),
           ),
+          if (queueStatus.position > 1) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Posisi: ${queueStatus.position} dari antrean',
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 11,
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           Row(
             children: [
@@ -461,6 +607,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildScheduleAndHistory() {
+    final stats = _dashboardData?.stats;
+
     return Container(
       margin: const EdgeInsets.all(20),
       child: Row(
@@ -468,17 +616,22 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           Expanded(
             child: _buildFeatureCard(
               title: 'Jadwal Konsultasi',
-              subtitle: 'Lihat jadwal kontrol',
+              subtitle: stats != null
+                  ? '${stats.upcomingAppointments} jadwal mendatang'
+                  : 'Lihat jadwal kontrol',
               icon: Icons.calendar_today,
               color: const Color(0xFF9B59B6),
               onTap: () => _viewSchedule(),
+              badge: stats?.upcomingAppointments,
             ),
           ),
           const SizedBox(width: 16),
           Expanded(
             child: _buildFeatureCard(
               title: 'Riwayat Kunjungan',
-              subtitle: 'History berobat',
+              subtitle: stats != null
+                  ? '${stats.totalConsultations} konsultasi'
+                  : 'History berobat',
               icon: Icons.history,
               color: const Color(0xFF1ABC9C),
               onTap: () => _viewMedicalHistory(),
@@ -490,6 +643,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildLabAndFamily() {
+    final stats = _dashboardData?.stats;
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(
@@ -497,10 +652,13 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           Expanded(
             child: _buildFeatureCard(
               title: 'Hasil Lab & Resep',
-              subtitle: 'Lihat hasil & obat',
+              subtitle: stats != null
+                  ? '${stats.pendingLabResults} hasil pending'
+                  : 'Lihat hasil & obat',
               icon: Icons.science,
               color: const Color(0xFFE67E22),
               onTap: () => _viewLabResults(),
+              badge: stats?.pendingLabResults,
             ),
           ),
           const SizedBox(width: 16),
@@ -519,6 +677,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildNotificationAndFeedback() {
+    final notifications = _dashboardData?.notifications;
+
     return Container(
       margin: const EdgeInsets.all(20),
       child: Row(
@@ -526,10 +686,13 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           Expanded(
             child: _buildFeatureCard(
               title: 'Notifikasi RS',
-              subtitle: 'Info terbaru RS',
+              subtitle: notifications != null
+                  ? '${notifications.unreadCount} belum dibaca'
+                  : 'Info terbaru RS',
               icon: Icons.notifications_active,
               color: const Color(0xFFE74C3C),
               onTap: () => _viewHospitalNotifications(),
+              badge: notifications?.unreadCount,
             ),
           ),
           const SizedBox(width: 16),
@@ -553,6 +716,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     required IconData icon,
     required Color color,
     required VoidCallback onTap,
+    int? badge,
   }) {
     return GestureDetector(
       onTap: onTap,
@@ -572,17 +736,40 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(
-                icon,
-                color: color,
-                size: 20,
-              ),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    icon,
+                    color: color,
+                    size: 20,
+                  ),
+                ),
+                if (badge != null && badge > 0) ...[
+                  const Spacer(),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE74C3C),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      badge > 99 ? '99+' : badge.toString(),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
             const SizedBox(height: 12),
             Text(

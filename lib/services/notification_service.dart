@@ -1,11 +1,38 @@
+// Update: lib/services/notification_service.dart - Add real push integration
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:convert';
 import 'dart:io';
 import '../models/notification_models.dart';
+import 'http_service.dart';
+import 'auth_service.dart';
+import 'push_notification_service.dart'; // Add this import
+
+class NotificationAPIResponse {
+  final List<HospitalNotification> notifications;
+  final Map<String, dynamic> pagination;
+  final Map<String, dynamic> summary;
+
+  NotificationAPIResponse({
+    required this.notifications,
+    required this.pagination,
+    required this.summary,
+  });
+
+  factory NotificationAPIResponse.fromJson(Map<String, dynamic> json) {
+    return NotificationAPIResponse(
+      notifications: (json['notifications'] as List? ?? [])
+          .map((item) => HospitalNotification.fromJson(item))
+          .toList(),
+      pagination: json['pagination'] ?? {},
+      summary: json['summary'] ?? {},
+    );
+  }
+}
 
 class NotificationService {
   static NotificationSettings _settings = NotificationSettings();
-  static final List<HospitalNotification> _notifications = [];
+  static final List<HospitalNotification> _localNotifications = [];
   static final List<Function(HospitalNotification)> _listeners = [];
 
   // Initialize notification service
@@ -14,19 +41,187 @@ class NotificationService {
       await _loadSettings();
       await _requestPermissions();
       await _setupNotificationChannels();
+
+      // Initialize real push notifications
+      await PushNotificationService.initialize();
+      PushNotificationService.setupNotificationListeners();
+
       print('NotificationService initialized successfully');
     } catch (e) {
       print('Error initializing NotificationService: $e');
     }
   }
 
-  // Request notification permissions
+  // API Methods (keep existing implementation)
+  static Future<NotificationAPIResponse> getNotifications({
+    int page = 1,
+    int limit = 20,
+    String type = 'all',
+    bool unreadOnly = false,
+  }) async {
+    try {
+      final token = AuthService.getCurrentToken();
+
+      if (token == null) {
+        throw Exception('No authentication token found');
+      }
+
+      final queryParams = {
+        'page': page.toString(),
+        'limit': limit.toString(),
+        'type': type,
+        'unreadOnly': unreadOnly.toString(),
+      };
+
+      final baseUrl = HttpService.getCurrentBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/notifications')
+          .replace(queryParameters: queryParams);
+
+      final response = await HttpService.get(
+        uri.toString().replaceFirst(baseUrl, ''),
+        token: token,
+      );
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.decode(response.body);
+
+        if (data['success'] == true) {
+          return NotificationAPIResponse.fromJson(data['data'] ?? {});
+        } else {
+          throw Exception(data['message'] ?? 'Failed to get notifications');
+        }
+      } else {
+        throw Exception(
+            'HTTP ${response.statusCode}: Failed to get notifications');
+      }
+    } catch (e) {
+      print('❌ Get notifications error: $e');
+      throw Exception('Failed to get notifications: $e');
+    }
+  }
+
+  // Keep existing API methods (markAsRead, deleteNotification, etc.)
+  static Future<void> markNotificationAsRead(String notificationId) async {
+    try {
+      final token = AuthService.getCurrentToken();
+
+      if (token == null) {
+        throw Exception('No authentication token found');
+      }
+
+      final response = await HttpService.put(
+        '/api/notifications/$notificationId/read',
+        {},
+        token: token,
+      );
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.decode(response.body);
+
+        if (data['success'] != true) {
+          throw Exception(data['message'] ?? 'Failed to mark as read');
+        }
+      } else {
+        throw Exception('HTTP ${response.statusCode}: Failed to mark as read');
+      }
+    } catch (e) {
+      print('❌ Mark as read error: $e');
+      throw Exception('Failed to mark notification as read: $e');
+    }
+  }
+
+  static Future<void> markAllNotificationsAsRead() async {
+    try {
+      final token = AuthService.getCurrentToken();
+
+      if (token == null) {
+        throw Exception('No authentication token found');
+      }
+
+      final response = await HttpService.put(
+        '/api/notifications/read-all',
+        {},
+        token: token,
+      );
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.decode(response.body);
+
+        if (data['success'] != true) {
+          throw Exception(data['message'] ?? 'Failed to mark all as read');
+        }
+      } else {
+        throw Exception(
+            'HTTP ${response.statusCode}: Failed to mark all as read');
+      }
+    } catch (e) {
+      print('❌ Mark all as read error: $e');
+      throw Exception('Failed to mark all notifications as read: $e');
+    }
+  }
+
+  static Future<void> deleteNotification(String notificationId) async {
+    try {
+      final token = AuthService.getCurrentToken();
+
+      if (token == null) {
+        throw Exception('No authentication token found');
+      }
+
+      final response = await HttpService.delete(
+        '/api/notifications/$notificationId',
+        token: token,
+      );
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.decode(response.body);
+
+        if (data['success'] != true) {
+          throw Exception(data['message'] ?? 'Failed to delete notification');
+        }
+      } else {
+        throw Exception(
+            'HTTP ${response.statusCode}: Failed to delete notification');
+      }
+    } catch (e) {
+      print('❌ Delete notification error: $e');
+      throw Exception('Failed to delete notification: $e');
+    }
+  }
+
+  static Future<void> clearAllNotifications() async {
+    try {
+      final token = AuthService.getCurrentToken();
+
+      if (token == null) {
+        throw Exception('No authentication token found');
+      }
+
+      final response = await HttpService.delete(
+        '/api/notifications',
+        token: token,
+      );
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.decode(response.body);
+
+        if (data['success'] != true) {
+          throw Exception(data['message'] ?? 'Failed to clear notifications');
+        }
+      } else {
+        throw Exception(
+            'HTTP ${response.statusCode}: Failed to clear notifications');
+      }
+    } catch (e) {
+      print('❌ Clear notifications error: $e');
+      throw Exception('Failed to clear notifications: $e');
+    }
+  }
+
+  // Keep existing local notification methods for testing
   static Future<bool> _requestPermissions() async {
     try {
-      // For iOS and Android 13+, request permission
       if (Platform.isIOS || Platform.isAndroid) {
-        // In a real app, you would use firebase_messaging or flutter_local_notifications
-        // For now, we'll simulate permission granted
         return true;
       }
       return true;
@@ -36,22 +231,16 @@ class NotificationService {
     }
   }
 
-  // Setup notification channels (Android)
   static Future<void> _setupNotificationChannels() async {
     try {
-      // In a real app, you would create notification channels here
-      // This is a simulation
       print('Notification channels setup complete');
     } catch (e) {
       print('Error setting up notification channels: $e');
     }
   }
 
-  // Load settings from storage
   static Future<void> _loadSettings() async {
     try {
-      // In a real app, load from SharedPreferences
-      // For now, use default settings
       _settings = NotificationSettings();
       print('Settings loaded successfully');
     } catch (e) {
@@ -59,17 +248,14 @@ class NotificationService {
     }
   }
 
-  // Save settings to storage
   static Future<void> _saveSettings() async {
     try {
-      // In a real app, save to SharedPreferences
       print('Settings saved successfully');
     } catch (e) {
       print('Error saving settings: $e');
     }
   }
 
-  // Update notification settings
   static Future<void> updateSettings(Map<String, dynamic> newSettings) async {
     try {
       _settings = NotificationSettings.fromJson(newSettings);
@@ -80,65 +266,103 @@ class NotificationService {
     }
   }
 
-  // Get current settings
   static NotificationSettings getSettings() {
     return _settings;
   }
 
-  // Send a notification
+  // Updated test methods with real push notifications
+  static Future<void> sendTestNotification() async {
+    // Send both local notification (for in-app) and real push notification
+    final testNotification = HospitalNotification(
+      id: 'TEST_${DateTime.now().millisecondsSinceEpoch}',
+      title: 'Test Notifikasi 🔔',
+      message:
+          'Ini adalah test notifikasi untuk memastikan sistem berjalan dengan baik.',
+      type: NotificationType.system,
+      priority: NotificationPriority.medium,
+      timestamp: DateTime.now(),
+      hospitalName: 'HospitalLink Test System',
+      relatedData: {
+        'testType': 'manual',
+        'userId': 'test_user',
+      },
+    );
+
+    // Send local notification for in-app display
+    await sendNotification(testNotification);
+
+    // Send real push notification that appears in status bar
+    await PushNotificationService.showTestNotification();
+  }
+
+  static Future<void> testRealNotification() async {
+    await PushNotificationService.showTestNotification();
+  }
+
+  static Future<void> testQueueNotification() async {
+    await PushNotificationService.showQueueNotification(
+      queueNumber: 'A-15',
+      doctorName: 'Dr. Sarah Wijaya - Poli Umum',
+      estimatedTime: '5 menit',
+    );
+  }
+
+  static Future<void> testAppointmentNotification() async {
+    await PushNotificationService.showAppointmentNotification(
+      doctorName: 'Dr. Ahmad Ramdan',
+      appointmentTime: 'Besok, 10:00 WIB',
+    );
+  }
+
+  static Future<void> testLabResultNotification() async {
+    await PushNotificationService.showLabResultNotification(
+      testName: 'Darah Lengkap',
+    );
+  }
+
+  static Future<void> testAllNotificationTypes() async {
+    await PushNotificationService.sendMultipleTestNotifications();
+  }
+
+  // Local notification methods (keep existing)
   static Future<void> sendNotification(
       HospitalNotification notification) async {
     try {
-      // Check if notifications are enabled
       if (!_settings.pushNotifications) {
         return;
       }
 
-      // Check notification type permissions
       if (!_isNotificationTypeEnabled(notification.type)) {
         return;
       }
 
-      // Check quiet hours
       if (_isQuietHours()) {
-        // Store for later or show silently
         return;
       }
 
-      // Add to notification list
-      _notifications.insert(0, notification);
-
-      // Show system notification
+      _localNotifications.insert(0, notification);
       await _showSystemNotification(notification);
 
-      // Notify listeners
       for (var listener in _listeners) {
         listener(notification);
       }
 
-      print('Notification sent: ${notification.title}');
+      print('Local notification sent: ${notification.title}');
     } catch (e) {
-      print('Error sending notification: $e');
+      print('Error sending local notification: $e');
     }
   }
 
-  // Show system notification
   static Future<void> _showSystemNotification(
       HospitalNotification notification) async {
     try {
-      // In a real app, use flutter_local_notifications
-      // For now, we'll simulate with print and vibration/sound
-
       print('📱 NOTIFICATION: ${notification.title}');
       print('   Message: ${notification.message}');
-      print('   Hospital: ${notification.hospitalName}');
 
-      // Play sound if enabled
       if (_settings.soundEnabled) {
         await _playNotificationSound();
       }
 
-      // Vibrate if enabled
       if (_settings.vibrationEnabled) {
         await _triggerVibration();
       }
@@ -147,7 +371,6 @@ class NotificationService {
     }
   }
 
-  // Play notification sound
   static Future<void> _playNotificationSound() async {
     try {
       await SystemSound.play(SystemSoundType.alert);
@@ -156,7 +379,6 @@ class NotificationService {
     }
   }
 
-  // Trigger vibration
   static Future<void> _triggerVibration() async {
     try {
       await HapticFeedback.vibrate();
@@ -165,7 +387,6 @@ class NotificationService {
     }
   }
 
-  // Check if notification type is enabled
   static bool _isNotificationTypeEnabled(NotificationType type) {
     switch (type) {
       case NotificationType.queue:
@@ -185,7 +406,6 @@ class NotificationService {
     }
   }
 
-  // Check if current time is in quiet hours
   static bool _isQuietHours() {
     if (!_settings.quietHoursEnabled) return false;
 
@@ -194,7 +414,6 @@ class NotificationService {
       final start = _parseTimeOfDay(_settings.quietHoursStart);
       final end = _parseTimeOfDay(_settings.quietHoursEnd);
 
-      // Handle overnight quiet hours (e.g., 22:00 to 07:00)
       if (start.hour > end.hour) {
         return now.hour >= start.hour || now.hour <= end.hour;
       } else {
@@ -206,33 +425,12 @@ class NotificationService {
     }
   }
 
-  // Parse time string to TimeOfDay
   static TimeOfDay _parseTimeOfDay(String timeString) {
     final parts = timeString.split(':');
     return TimeOfDay(
       hour: int.parse(parts[0]),
       minute: int.parse(parts[1]),
     );
-  }
-
-  // Test methods
-  static Future<void> sendTestNotification() async {
-    final testNotification = HospitalNotification(
-      id: 'TEST_${DateTime.now().millisecondsSinceEpoch}',
-      title: 'Test Notifikasi 🔔',
-      message:
-          'Ini adalah test notifikasi untuk memastikan sistem berjalan dengan baik.',
-      type: NotificationType.system,
-      priority: NotificationPriority.medium,
-      timestamp: DateTime.now(),
-      hospitalName: 'HospitalLink Test System',
-      relatedData: {
-        'testType': 'manual',
-        'userId': 'test_user',
-      },
-    );
-
-    await sendNotification(testNotification);
   }
 
   static Future<void> testSound() async {
@@ -253,124 +451,6 @@ class NotificationService {
     }
   }
 
-  // Send specific notification types
-  static Future<void> sendQueueNotification({
-    required String queueNumber,
-    required String message,
-    String? hospitalName,
-    Map<String, dynamic>? extraData,
-  }) async {
-    final notification = HospitalNotification(
-      id: 'QUEUE_${DateTime.now().millisecondsSinceEpoch}',
-      title: 'Update Antrean',
-      message: message,
-      type: NotificationType.queue,
-      priority: NotificationPriority.high,
-      timestamp: DateTime.now(),
-      hospitalName: hospitalName ?? 'Rumah Sakit',
-      relatedData: {
-        'queueNumber': queueNumber,
-        ...?extraData,
-      },
-    );
-
-    await sendNotification(notification);
-  }
-
-  static Future<void> sendAppointmentReminder({
-    required String doctorName,
-    required DateTime appointmentTime,
-    String? hospitalName,
-    Map<String, dynamic>? extraData,
-  }) async {
-    final notification = HospitalNotification(
-      id: 'APPOINTMENT_${DateTime.now().millisecondsSinceEpoch}',
-      title: 'Reminder Konsultasi',
-      message:
-          'Jangan lupa konsultasi dengan $doctorName pada ${_formatDateTime(appointmentTime)}',
-      type: NotificationType.appointment,
-      priority: NotificationPriority.medium,
-      timestamp: DateTime.now(),
-      hospitalName: hospitalName ?? 'Rumah Sakit',
-      relatedData: {
-        'doctorName': doctorName,
-        'appointmentTime': appointmentTime.toIso8601String(),
-        ...?extraData,
-      },
-    );
-
-    await sendNotification(notification);
-  }
-
-  static Future<void> sendLabResultNotification({
-    required String testName,
-    String? hospitalName,
-    Map<String, dynamic>? extraData,
-  }) async {
-    final notification = HospitalNotification(
-      id: 'LAB_${DateTime.now().millisecondsSinceEpoch}',
-      title: 'Hasil Lab Tersedia',
-      message:
-          'Hasil pemeriksaan $testName sudah dapat dilihat. Tap untuk melihat detail.',
-      type: NotificationType.labResult,
-      priority: NotificationPriority.medium,
-      timestamp: DateTime.now(),
-      hospitalName: hospitalName ?? 'Laboratorium',
-      relatedData: {
-        'testName': testName,
-        ...?extraData,
-      },
-    );
-
-    await sendNotification(notification);
-  }
-
-  static Future<void> sendPaymentNotification({
-    required String amount,
-    required String status,
-    String? hospitalName,
-    Map<String, dynamic>? extraData,
-  }) async {
-    final notification = HospitalNotification(
-      id: 'PAYMENT_${DateTime.now().millisecondsSinceEpoch}',
-      title: status == 'success' ? 'Pembayaran Berhasil' : 'Update Pembayaran',
-      message: 'Pembayaran sebesar $amount telah $status.',
-      type: NotificationType.payment,
-      priority: NotificationPriority.medium,
-      timestamp: DateTime.now(),
-      hospitalName: hospitalName ?? 'Rumah Sakit',
-      relatedData: {
-        'amount': amount,
-        'status': status,
-        ...?extraData,
-      },
-    );
-
-    await sendNotification(notification);
-  }
-
-  static Future<void> sendHealthTip({
-    required String tip,
-    String? title,
-  }) async {
-    final notification = HospitalNotification(
-      id: 'HEALTH_${DateTime.now().millisecondsSinceEpoch}',
-      title: title ?? 'Tips Kesehatan Hari Ini',
-      message: tip,
-      type: NotificationType.healthTip,
-      priority: NotificationPriority.low,
-      timestamp: DateTime.now(),
-      hospitalName: 'Tim Medis HospitalLink',
-    );
-
-    await sendNotification(notification);
-  }
-
-  // Utility methods
-  static String _formatDateTime(DateTime dateTime) {
-    return '${dateTime.day}/${dateTime.month}/${dateTime.year} ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}';
-  }
-
   // Listener management
   static void addListener(Function(HospitalNotification) listener) {
     _listeners.add(listener);
@@ -380,50 +460,16 @@ class NotificationService {
     _listeners.remove(listener);
   }
 
-  // Get notifications
-  static List<HospitalNotification> getAllNotifications() {
-    return List.from(_notifications);
+  // Get local notifications
+  static List<HospitalNotification> getAllLocalNotifications() {
+    return List.from(_localNotifications);
   }
 
-  static List<HospitalNotification> getUnreadNotifications() {
-    return _notifications.where((n) => !n.isRead).toList();
+  static List<HospitalNotification> getUnreadLocalNotifications() {
+    return _localNotifications.where((n) => !n.isRead).toList();
   }
 
-  // Mark notifications as read
-  static Future<void> markAsRead(String notificationId) async {
-    try {
-      final notification =
-          _notifications.firstWhere((n) => n.id == notificationId);
-      notification.isRead = true;
-      print('Notification marked as read: $notificationId');
-    } catch (e) {
-      print('Error marking notification as read: $e');
-    }
-  }
-
-  static Future<void> markAllAsRead() async {
-    try {
-      for (var notification in _notifications) {
-        notification.isRead = true;
-      }
-      print('All notifications marked as read');
-    } catch (e) {
-      print('Error marking all notifications as read: $e');
-    }
-  }
-
-  // Clear notifications
-  static Future<void> clearAllNotifications() async {
-    try {
-      _notifications.clear();
-      print('All notifications cleared');
-    } catch (e) {
-      print('Error clearing notifications: $e');
-    }
-  }
-
-  // Badge count
-  static int getUnreadCount() {
-    return _notifications.where((n) => !n.isRead).length;
+  static int getUnreadLocalCount() {
+    return _localNotifications.where((n) => !n.isRead).length;
   }
 }

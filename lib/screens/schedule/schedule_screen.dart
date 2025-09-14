@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
-import 'dart:math';
-import '../../models/schedule_models.dart';
+import '../../models/schedule_models.dart' as schedule_models;
+import '../../models/consultation_models.dart';
+import '../../services/schedule_service.dart';
 import '../../services/auth_service.dart';
 import '../queue/queue_detail_screen.dart';
-import '../../widgets/qr_code_widget.dart'; // Add this import
+import '../consultation/chat_consultation_screen.dart';
+import '../../widgets/qr_code_widget.dart';
 
 class ScheduleScreen extends StatefulWidget {
   const ScheduleScreen({super.key});
@@ -17,9 +19,12 @@ class _ScheduleScreenState extends State<ScheduleScreen>
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
 
+  // Use the ConsultationSchedule from consultation_models.dart
   List<ConsultationSchedule> _activeSchedules = [];
   List<ConsultationSchedule> _upcomingSchedules = [];
+  List<ChatConsultation> _chatConsultations = [];
   bool _isLoading = true;
+  String? _error;
 
   @override
   void initState() {
@@ -38,111 +43,52 @@ class _ScheduleScreenState extends State<ScheduleScreen>
     );
   }
 
-  void _loadSchedules() {
-    // Simulate loading data
-    Future.delayed(const Duration(seconds: 1), () {
+  Future<void> _loadSchedules() async {
+    try {
       setState(() {
-        _activeSchedules = _generateActiveSchedules();
-        _upcomingSchedules = _generateUpcomingSchedules();
+        _isLoading = true;
+        _error = null;
+      });
+
+      // Fetch real data from backend
+      final results = await Future.wait([
+        ScheduleService.getActiveConsultations(),
+        ScheduleService.getUpcomingConsultations(),
+        ScheduleService.getChatConsultations(),
+      ]);
+
+      final activeConsultations = results[0] as List<ScheduleConsultationItem>;
+      final upcomingConsultations =
+          results[1] as List<ScheduleConsultationItem>;
+      final chatConsultations = results[2] as List<ChatConsultation>;
+
+      setState(() {
+        // Convert to legacy format for UI compatibility
+        _activeSchedules =
+            activeConsultations.map((item) => item.toLegacySchedule()).toList();
+
+        _upcomingSchedules = upcomingConsultations
+            .map((item) => item.toLegacySchedule())
+            .toList();
+
+        _chatConsultations = chatConsultations;
         _isLoading = false;
       });
+
       _animationController.forward();
-    });
-  }
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
 
-  List<ConsultationSchedule> _generateActiveSchedules() {
-    final random = Random();
-    final schedules = <ConsultationSchedule>[];
+        // Fallback to empty lists
+        _activeSchedules = [];
+        _upcomingSchedules = [];
+        _chatConsultations = [];
+      });
 
-    // Generate 0-2 active schedules
-    final activeCount = random.nextInt(3);
-
-    for (int i = 0; i < activeCount; i++) {
-      schedules.add(ConsultationSchedule(
-        id: 'ACT_${random.nextInt(1000)}',
-        doctorName: [
-          'Dr. Sarah Wijaya, Sp.PD',
-          'Dr. Ahmad Budi, Sp.JP',
-          'Dr. Lisa Sari, Sp.M'
-        ][random.nextInt(3)],
-        specialty: [
-          'Spesialis Penyakit Dalam',
-          'Spesialis Jantung',
-          'Spesialis Mata'
-        ][random.nextInt(3)],
-        hospital: 'RS Mitra Keluarga',
-        scheduledDate: DateTime.now().add(Duration(
-          days: random.nextInt(7) + 1,
-          hours: random.nextInt(8) + 8,
-        )),
-        type: [
-          ConsultationType.followUp,
-          ConsultationType.checkUp,
-          ConsultationType.consultation
-        ][random.nextInt(3)],
-        status: ScheduleStatus.confirmed,
-        queueNumber: 'A-${random.nextInt(50) + 1}',
-        estimatedDuration: random.nextInt(30) + 15,
-        room: 'Ruang ${['A-1', 'B-2', 'C-3'][random.nextInt(3)]}',
-        notes: 'Kontrol rutin setelah pengobatan',
-        isUrgent: random.nextBool(),
-      ));
+      _showSnackBar('Gagal memuat jadwal: $e');
     }
-
-    return schedules;
-  }
-
-  List<ConsultationSchedule> _generateUpcomingSchedules() {
-    final random = Random();
-    final schedules = <ConsultationSchedule>[];
-
-    // Generate 2-5 upcoming schedules
-    final upcomingCount = random.nextInt(4) + 2;
-
-    for (int i = 0; i < upcomingCount; i++) {
-      schedules.add(ConsultationSchedule(
-        id: 'UPC_${random.nextInt(1000)}',
-        doctorName: [
-          'Dr. Sarah Wijaya, Sp.PD',
-          'Dr. Ahmad Budi, Sp.JP',
-          'Dr. Lisa Sari, Sp.M',
-          'Dr. Andi Pratama',
-          'Dr. Maya Sari, Sp.OG'
-        ][random.nextInt(5)],
-        specialty: [
-          'Spesialis Penyakit Dalam',
-          'Spesialis Jantung',
-          'Spesialis Mata',
-          'Dokter Umum',
-          'Spesialis Kandungan'
-        ][random.nextInt(5)],
-        hospital: 'RS Mitra Keluarga',
-        scheduledDate: DateTime.now().add(Duration(
-          days: random.nextInt(30) + 8,
-          hours: random.nextInt(8) + 8,
-        )),
-        type: [
-          ConsultationType.followUp,
-          ConsultationType.checkUp,
-          ConsultationType.consultation
-        ][random.nextInt(3)],
-        status: [
-          ScheduleStatus.pending,
-          ScheduleStatus.confirmed,
-          ScheduleStatus.waitingConfirmation
-        ][random.nextInt(3)],
-        estimatedDuration: random.nextInt(30) + 15,
-        room: 'Ruang ${['A-1', 'B-2', 'C-3', 'D-4'][random.nextInt(4)]}',
-        notes: [
-          'Kontrol rutin setelah pengobatan',
-          'Pemeriksaan lanjutan',
-          'Konsultasi hasil laboratorium',
-          'Check up berkala'
-        ][random.nextInt(4)],
-      ));
-    }
-
-    return schedules;
   }
 
   @override
@@ -216,10 +162,228 @@ class _ScheduleScreenState extends State<ScheduleScreen>
             children: [
               _buildActiveSchedulesSection(),
               const SizedBox(height: 24),
+              _buildChatConsultationsSection(),
+              const SizedBox(height: 24),
               _buildUpcomingSchedulesSection(),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildChatConsultationsSection() {
+    if (_chatConsultations.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF9B59B6).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.chat_bubble_outline,
+                color: Color(0xFF9B59B6),
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'Chat Konsultasi',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF2C3E50),
+              ),
+            ),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF9B59B6),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '${_chatConsultations.length}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        ...List.generate(_chatConsultations.length, (index) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _buildChatConsultationCard(_chatConsultations[index]),
+          );
+        }),
+      ],
+    );
+  }
+
+  Widget _buildChatConsultationCard(ChatConsultation consultation) {
+    Color statusColor;
+    switch (consultation.status) {
+      case ConsultationStatus.waiting:
+        statusColor = const Color(0xFFF39C12);
+        break;
+      case ConsultationStatus.inProgress:
+        statusColor = const Color(0xFF2ECC71);
+        break;
+      case ConsultationStatus.completed:
+        statusColor = const Color(0xFF3498DB);
+        break;
+      case ConsultationStatus.cancelled:
+        statusColor = const Color(0xFFE74C3C);
+        break;
+    }
+
+    return GestureDetector(
+      onTap: () => _openChatConsultation(consultation),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: statusColor.withOpacity(0.3)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        consultation.doctorName,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF2C3E50),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        consultation.specialty,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF7F8C8D),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    _getConsultationStatusText(consultation.status),
+                    style: TextStyle(
+                      color: statusColor,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Icon(Icons.access_time, color: Colors.grey[600], size: 14),
+                const SizedBox(width: 6),
+                Text(
+                  _formatDateTime(consultation.scheduledTime),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF2C3E50),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                if (consultation.hasUnreadMessages) ...[
+                  const SizedBox(width: 16),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE74C3C),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Text(
+                      'Pesan baru',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            if (consultation.queuePosition > 0) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(Icons.queue, color: Colors.grey[600], size: 14),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Posisi ${consultation.queuePosition} - Estimasi ${consultation.estimatedWaitMinutes} menit',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF7F8C8D),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _getConsultationStatusText(ConsultationStatus status) {
+    switch (status) {
+      case ConsultationStatus.waiting:
+        return 'Menunggu';
+      case ConsultationStatus.inProgress:
+        return 'Berlangsung';
+      case ConsultationStatus.completed:
+        return 'Selesai';
+      case ConsultationStatus.cancelled:
+        return 'Dibatalkan';
+    }
+  }
+
+  void _openChatConsultation(ChatConsultation consultation) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) =>
+            ChatConsultationScreen(consultation: consultation),
       ),
     );
   }
@@ -285,6 +449,38 @@ class _ScheduleScreenState extends State<ScheduleScreen>
     );
   }
 
+  // Add action methods
+  void _cancelConsultation(String consultationId) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Batalkan Konsultasi'),
+        content:
+            const Text('Apakah Anda yakin ingin membatalkan konsultasi ini?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Tidak'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Ya, Batalkan'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await ScheduleService.cancelConsultation(consultationId);
+        _showSnackBar('Konsultasi berhasil dibatalkan');
+        _refreshSchedules();
+      } catch (e) {
+        _showSnackBar('Gagal membatalkan konsultasi: $e');
+      }
+    }
+  }
+
   Widget _buildEmptyActiveSchedule() {
     return Container(
       width: double.infinity,
@@ -329,6 +525,59 @@ class _ScheduleScreenState extends State<ScheduleScreen>
             textAlign: TextAlign.center,
           ),
         ],
+      ),
+    );
+  }
+
+  Future<void> _refreshSchedules() async {
+    await _loadSchedules();
+  }
+
+  String _formatDateTime(DateTime dateTime) {
+    final days = [
+      'Minggu',
+      'Senin',
+      'Selasa',
+      'Rabu',
+      'Kamis',
+      'Jumat',
+      'Sabtu'
+    ];
+    final months = [
+      'Januari',
+      'Februari',
+      'Maret',
+      'April',
+      'Mei',
+      'Juni',
+      'Juli',
+      'Agustus',
+      'September',
+      'Oktober',
+      'November',
+      'Desember'
+    ];
+
+    final day = days[dateTime.weekday % 7];
+    final date = dateTime.day;
+    final month = months[dateTime.month - 1];
+    final year = dateTime.year;
+    final hour = dateTime.hour.toString().padLeft(2, '0');
+    final minute = dateTime.minute.toString().padLeft(2, '0');
+
+    return '$day, $date $month $year • $hour:$minute';
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: const Color(0xFF2E7D89),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        margin: const EdgeInsets.all(16),
       ),
     );
   }
@@ -461,15 +710,13 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: Colors.white.withOpacity(0.3),
                           borderRadius: BorderRadius.circular(6),
                         ),
-                        child: Text(
+                        child: const Text(
                           'Detail',
                           style: TextStyle(
-                            color: schedule.isUrgent
-                                ? const Color(0xFFE74C3C)
-                                : const Color(0xFF2ECC71),
+                            color: Colors.white,
                             fontSize: 10,
                             fontWeight: FontWeight.bold,
                           ),
@@ -532,12 +779,60 @@ class _ScheduleScreenState extends State<ScheduleScreen>
           ],
         ),
         const SizedBox(height: 16),
-        ...List.generate(_upcomingSchedules.length, (index) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: _buildUpcomingScheduleCard(_upcomingSchedules[index]),
-          );
-        }),
+        if (_upcomingSchedules.isEmpty) ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(32),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.grey[200]!),
+            ),
+            child: Column(
+              children: [
+                Container(
+                  width: 60,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                  child: Icon(
+                    Icons.event_note,
+                    color: Colors.grey[400],
+                    size: 30,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Tidak ada jadwal mendatang',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey[600],
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Jadwal konsultasi yang akan datang akan muncul di sini',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[500],
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ] else ...[
+          ...List.generate(_upcomingSchedules.length, (index) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _buildUpcomingScheduleCard(_upcomingSchedules[index]),
+            );
+          }),
+        ],
       ],
     );
   }
@@ -657,7 +952,7 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                     child: Text(
                       schedule.notes,
                       style: const TextStyle(
-                        fontSize: 11,
+                        fontSize: 12,
                         color: Color(0xFF7F8C8D),
                         fontStyle: FontStyle.italic,
                       ),
@@ -703,9 +998,9 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    const Text(
                       'Detail Jadwal Konsultasi',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
                         color: Color(0xFF2C3E50),
@@ -729,142 +1024,50 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                       _buildDetailRow('Catatan', schedule.notes),
                     const SizedBox(height: 24),
 
-                    // QR Code Section
-                    if (schedule.status == ScheduleStatus.confirmed) ...[
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.grey[200]!),
-                        ),
-                        child: Column(
-                          children: [
-                            Row(
-                              children: [
-                                const Icon(Icons.qr_code,
-                                    color: Color(0xFF2E7D89)),
-                                const SizedBox(width: 8),
-                                const Text(
-                                  'QR Code Konsultasi',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF2C3E50),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: OutlinedButton.icon(
-                                    onPressed: () => _showQRCode(schedule),
-                                    icon: const Icon(Icons.qr_code_scanner,
-                                        size: 16),
-                                    label: const Text('Tampilkan QR'),
-                                    style: OutlinedButton.styleFrom(
-                                      foregroundColor: const Color(0xFF2E7D89),
-                                      side: const BorderSide(
-                                          color: Color(0xFF2E7D89)),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: ElevatedButton.icon(
-                                    onPressed: () => _showPrintCode(schedule),
-                                    icon: const Icon(Icons.print, size: 16),
-                                    label: const Text('Kode Print'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFF2E7D89),
-                                      foregroundColor: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                    ],
-
-                    if (schedule.status == ScheduleStatus.confirmed &&
-                        schedule.queueNumber != null) ...[
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: () {
-                            Navigator.pop(context);
-                            _viewQueueDetail(schedule);
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF2ECC71),
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: const Text(
-                            'Lihat Detail Antrean',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                    ],
+                    // Action buttons
                     Row(
                       children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => Navigator.pop(context),
-                            style: OutlinedButton.styleFrom(
-                              side: const BorderSide(color: Color(0xFF7F8C8D)),
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+                        if (schedule.status == ScheduleStatus.pending ||
+                            schedule.status == ScheduleStatus.confirmed) ...[
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () {
+                                Navigator.pop(context);
+                                _cancelConsultation(schedule.id);
+                              },
+                              style: OutlinedButton.styleFrom(
+                                side:
+                                    const BorderSide(color: Color(0xFFE74C3C)),
+                                foregroundColor: const Color(0xFFE74C3C),
                               ),
-                            ),
-                            child: const Text(
-                              'Tutup',
-                              style: TextStyle(
-                                color: Color(0xFF7F8C8D),
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
+                              child: const Text('Batalkan'),
                             ),
                           ),
-                        ),
-                        if (schedule.status == ScheduleStatus.pending ||
-                            schedule.status ==
-                                ScheduleStatus.waitingConfirmation) ...[
                           const SizedBox(width: 12),
+                        ],
+                        if (schedule.queueNumber != null) ...[
                           Expanded(
                             child: ElevatedButton(
-                              onPressed: () => _rescheduleAppointment(schedule),
+                              onPressed: () {
+                                Navigator.pop(context);
+                                _viewQueueDetail(schedule);
+                              },
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF3498DB),
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 16),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
+                                backgroundColor: const Color(0xFF2E7D89),
+                                foregroundColor: Colors.white,
                               ),
-                              child: const Text(
-                                'Reschedule',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
+                              child: const Text('Lihat Antrean'),
+                            ),
+                          ),
+                        ] else ...[
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () => Navigator.pop(context),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF2E7D89),
+                                foregroundColor: Colors.white,
                               ),
+                              child: const Text('Tutup'),
                             ),
                           ),
                         ],
@@ -878,275 +1081,6 @@ class _ScheduleScreenState extends State<ScheduleScreen>
         ),
       ),
     );
-  }
-
-  void _showQRCode(ConsultationSchedule schedule) {
-    Navigator.pop(context); // Close detail modal first
-
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Container(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  const Text(
-                    'QR Code Konsultasi',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF2C3E50),
-                    ),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close, color: Color(0xFF7F8C8D)),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey[300]!),
-                ),
-                child: QRCodeWidget(
-                  data:
-                      'CONSULTATION_${schedule.id}_${DateTime.now().millisecondsSinceEpoch}',
-                  size: 200,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                schedule.doctorName,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF2C3E50),
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                _formatDateTime(schedule.scheduledDate),
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF7F8C8D),
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _shareQRCode(schedule),
-                      icon: const Icon(Icons.share, size: 16),
-                      label: const Text('Bagikan'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF3498DB),
-                        side: const BorderSide(color: Color(0xFF3498DB)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => _saveQRCode(schedule),
-                      icon: const Icon(Icons.download, size: 16),
-                      label: const Text('Simpan'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF2E7D89),
-                        foregroundColor: Colors.white,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showPrintCode(ConsultationSchedule schedule) {
-    Navigator.pop(context); // Close detail modal first
-
-    final printCode = _generatePrintCode();
-
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Container(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  const Text(
-                    'Kode Print Konsultasi',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF2C3E50),
-                    ),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close, color: Color(0xFF7F8C8D)),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey[300]!),
-                ),
-                child: Column(
-                  children: [
-                    const Icon(
-                      Icons.confirmation_number,
-                      color: Color(0xFF2E7D89),
-                      size: 40,
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Kode Print',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF7F8C8D),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      printCode,
-                      style: const TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF2E7D89),
-                        letterSpacing: 4,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      schedule.doctorName,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF2C3E50),
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _formatDateTime(schedule.scheduledDate),
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF7F8C8D),
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFF3CD),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFFFC107)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.info_outline,
-                      color: Color(0xFF856404),
-                      size: 16,
-                    ),
-                    const SizedBox(width: 8),
-                    const Expanded(
-                      child: Text(
-                        'Berikan kode ini ke petugas RS untuk mencetak tiket konsultasi',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Color(0xFF856404),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _copyPrintCode(printCode),
-                      icon: const Icon(Icons.copy, size: 16),
-                      label: const Text('Salin Kode'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF3498DB),
-                        side: const BorderSide(color: Color(0xFF3498DB)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.check, size: 16),
-                      label: const Text('Mengerti'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF2E7D89),
-                        foregroundColor: Colors.white,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _generatePrintCode() {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    final random = Random();
-    return String.fromCharCodes(
-      Iterable.generate(
-          6, (_) => chars.codeUnitAt(random.nextInt(chars.length))),
-    );
-  }
-
-  void _shareQRCode(ConsultationSchedule schedule) =>
-      _showSnackBar('Bagikan QR akan segera hadir!');
-  void _saveQRCode(ConsultationSchedule schedule) =>
-      _showSnackBar('QR berhasil disimpan!');
-  void _copyPrintCode(String code) {
-    // Copy to clipboard
-    _showSnackBar('Kode $code berhasil disalin!');
   }
 
   Widget _buildDetailRow(String label, String value) {
@@ -1188,30 +1122,17 @@ class _ScheduleScreenState extends State<ScheduleScreen>
   }
 
   void _viewQueueDetail(ConsultationSchedule schedule) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => QueueDetailScreen(
-          queueNumber: schedule.queueNumber!,
-          isFromAutoQueue: false,
+    if (schedule.queueNumber != null) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => QueueDetailScreen(
+            queueNumber: schedule.queueNumber!,
+            isFromAutoQueue: false,
+          ),
         ),
-      ),
-    );
-  }
-
-  void _rescheduleAppointment(ConsultationSchedule schedule) {
-    Navigator.pop(context);
-    _showSnackBar('Fitur reschedule akan segera hadir!');
-  }
-
-  Future<void> _refreshSchedules() async {
-    setState(() => _isLoading = true);
-    await Future.delayed(const Duration(seconds: 1));
-    setState(() {
-      _activeSchedules = _generateActiveSchedules();
-      _upcomingSchedules = _generateUpcomingSchedules();
-      _isLoading = false;
-    });
+      );
+    }
   }
 
   Color _getStatusColor(ScheduleStatus status) {
@@ -1253,54 +1174,5 @@ class _ScheduleScreenState extends State<ScheduleScreen>
       case ConsultationType.checkUp:
         return 'Medical Check Up';
     }
-  }
-
-  String _formatDateTime(DateTime dateTime) {
-    final days = [
-      'Minggu',
-      'Senin',
-      'Selasa',
-      'Rabu',
-      'Kamis',
-      'Jumat',
-      'Sabtu'
-    ];
-    final months = [
-      'Januari',
-      'Februari',
-      'Maret',
-      'April',
-      'Mei',
-      'Juni',
-      'Juli',
-      'Agustus',
-      'September',
-      'Oktober',
-      'November',
-      'Desember'
-    ];
-
-    final day = days[dateTime.weekday % 7];
-    final date = dateTime.day;
-    final month = months[dateTime.month - 1];
-    final year = dateTime.year;
-    final hour = dateTime.hour.toString().padLeft(2, '0');
-    final minute = dateTime.minute.toString().padLeft(2, '0');
-
-    return '$day, $date $month $year • $hour:$minute';
-  }
-
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: const Color(0xFF2E7D89),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        margin: const EdgeInsets.all(16),
-      ),
-    );
   }
 }
