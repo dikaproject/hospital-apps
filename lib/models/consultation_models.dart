@@ -459,16 +459,13 @@ class GeneralDoctorRecommendation {
 class AIScreeningResult {
   final String consultationId;
   final String severity;
-  final String recommendation;
+  final String? recommendation;
   final String message;
   final bool needsDoctorConsultation;
-  final int estimatedFee;
+  final double estimatedFee;
   final double confidence;
-  final Map<String, dynamic>? symptomsAnalysis;
-  
-  // New fields for progressive consultation
-  final String? type; // 'FOLLOW_UP_QUESTION' or 'FINAL_DIAGNOSIS'
-  final String? question; // For follow-up questions
+  final String type;
+  final String? question;
   final int? questionNumber;
   final int? totalQuestions;
   final Map<String, dynamic>? progress;
@@ -476,21 +473,18 @@ class AIScreeningResult {
   final List<String>? possibleConditions;
   final String? urgencyLevel;
   final List<String>? recommendedActions;
-  final List<String>? redFlags;
-  final String? whenToSeekHelp;
   final Map<String, dynamic>? medicalResearch;
-  final bool? isComplete;
+  final bool isComplete;
 
   AIScreeningResult({
     required this.consultationId,
     required this.severity,
-    required this.recommendation,
+    this.recommendation,
     required this.message,
     required this.needsDoctorConsultation,
     required this.estimatedFee,
     required this.confidence,
-    this.symptomsAnalysis,
-    this.type,
+    required this.type,
     this.question,
     this.questionNumber,
     this.totalQuestions,
@@ -499,42 +493,90 @@ class AIScreeningResult {
     this.possibleConditions,
     this.urgencyLevel,
     this.recommendedActions,
-    this.redFlags,
-    this.whenToSeekHelp,
     this.medicalResearch,
-    this.isComplete,
+    this.isComplete = false,
   });
 
+  // Safer fromJson method
   factory AIScreeningResult.fromJson(Map<String, dynamic> json) {
-    return AIScreeningResult(
-      consultationId: json['consultationId'] ?? '',
-      severity: json['severity'] ?? 'MEDIUM',
-      recommendation: json['recommendation'] ?? 'DOCTOR_CONSULTATION',
-      message: json['message'] ?? '',
-      needsDoctorConsultation: json['needsDoctorConsultation'] ?? true,
-      estimatedFee: json['estimatedFee'] ?? 0,
-      confidence: (json['confidence'] ?? 0.7).toDouble(),
-      symptomsAnalysis: json['symptoms_analysis'],
-      type: json['type'],
-      question: json['question'],
-      questionNumber: json['questionNumber'],
-      totalQuestions: json['totalQuestions'],
-      progress: json['progress'],
-      primaryDiagnosis: json['primaryDiagnosis'],
-      possibleConditions: json['possibleConditions'] != null 
-          ? List<String>.from(json['possibleConditions'])
-          : null,
-      urgencyLevel: json['urgencyLevel'],
-      recommendedActions: json['recommendedActions'] != null
-          ? List<String>.from(json['recommendedActions'])
-          : null,
-      redFlags: json['redFlags'] != null
-          ? List<String>.from(json['redFlags'])
-          : null,
-      whenToSeekHelp: json['whenToSeekHelp'],
-      medicalResearch: json['medicalResearch'],
-      isComplete: json['isComplete'],
-    );
+    try {
+      return AIScreeningResult(
+        consultationId: json['consultationId']?.toString() ?? '',
+        severity: json['severity']?.toString() ?? 'MEDIUM',
+        recommendation: json['recommendation']?.toString(),
+        message: json['message']?.toString() ?? 'Hasil analisis tersedia',
+        needsDoctorConsultation: json['needsDoctorConsultation'] == true,
+        estimatedFee: (json['estimatedFee'] is num) 
+            ? (json['estimatedFee'] as num).toDouble() 
+            : 0.0,
+        confidence: (json['confidence'] is num) 
+            ? (json['confidence'] as num).toDouble() 
+            : 0.7,
+        type: json['type']?.toString() ?? 'FINAL_DIAGNOSIS',
+        question: json['question']?.toString(),
+        questionNumber: json['questionNumber'] is num 
+            ? (json['questionNumber'] as num).toInt() 
+            : null,
+        totalQuestions: json['totalQuestions'] is num 
+            ? (json['totalQuestions'] as num).toInt() 
+            : null,
+        progress: json['progress'] is Map<String, dynamic> 
+            ? json['progress'] as Map<String, dynamic> 
+            : null,
+        primaryDiagnosis: json['primaryDiagnosis']?.toString(),
+        possibleConditions: json['possibleConditions'] is List
+            ? (json['possibleConditions'] as List)
+                .map((e) => e.toString())
+                .toList()
+            : null,
+        urgencyLevel: json['urgencyLevel']?.toString(),
+        recommendedActions: json['recommendedActions'] is List
+            ? (json['recommendedActions'] as List)
+                .map((e) => e.toString())
+                .toList()
+            : null,
+        medicalResearch: json['medicalResearch'] is Map<String, dynamic>
+            ? json['medicalResearch'] as Map<String, dynamic>
+            : null,
+        isComplete: json['isComplete'] == true,
+      );
+    } catch (e) {
+      print('Error parsing AIScreeningResult: $e');
+      // Return fallback result
+      return AIScreeningResult(
+        consultationId: json['consultationId']?.toString() ?? '',
+        severity: 'MEDIUM',
+        recommendation: 'DOCTOR_CONSULTATION',
+        message: 'Hasil analisis tersedia, silakan lihat detail.',
+        needsDoctorConsultation: true,
+        estimatedFee: 25000.0,
+        confidence: 0.7,
+        type: 'FINAL_DIAGNOSIS',
+      );
+    }
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'consultationId': consultationId,
+      'severity': severity,
+      'recommendation': recommendation,
+      'message': message,
+      'needsDoctorConsultation': needsDoctorConsultation,
+      'estimatedFee': estimatedFee,
+      'confidence': confidence,
+      'type': type,
+      'question': question,
+      'questionNumber': questionNumber,
+      'totalQuestions': totalQuestions,
+      'progress': progress,
+      'primaryDiagnosis': primaryDiagnosis,
+      'possibleConditions': possibleConditions,
+      'urgencyLevel': urgencyLevel,
+      'recommendedActions': recommendedActions,
+      'medicalResearch': medicalResearch,
+      'isComplete': isComplete,
+    };
   }
 }
 

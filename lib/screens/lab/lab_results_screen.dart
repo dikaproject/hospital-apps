@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
-import 'dart:math';
-import '../../models/lab_models.dart';
-import '../../widgets/lab_card_widget.dart';
-import '../../widgets/medication_card_widget.dart';
-import '../../widgets/notification_setup_widget.dart';
+import 'package:flutter/services.dart';
+import '../../models/lab_results_models.dart';
+import '../../models/prescription_models.dart' as prescription_models;
+import '../../services/lab_results_service.dart';
+import '../../services/notification_service.dart';
+import '../../widgets/lab_result_card.dart';
+import '../../widgets/prescription_card.dart';
+import '../../widgets/payment_dialog.dart';
+import 'package:intl/intl.dart';
 
 class LabResultsScreen extends StatefulWidget {
   const LabResultsScreen({super.key});
@@ -18,6 +22,8 @@ class _LabResultsScreenState extends State<LabResultsScreen>
   late Animation<double> _fadeAnimation;
 
   List<LabResult> _labResults = [];
+  List<MedicalRecord> _medicalRecords = [];
+  List<prescription_models.DigitalPrescription> _prescriptions = [];
   bool _isLoading = true;
   String _selectedTab = 'Hasil Lab';
 
@@ -25,12 +31,12 @@ class _LabResultsScreenState extends State<LabResultsScreen>
   void initState() {
     super.initState();
     _setupAnimations();
-    _loadLabResults();
+    _loadAllData();
   }
 
   void _setupAnimations() {
     _animationController = AnimationController(
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 800),
       vsync: this,
     );
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
@@ -38,69 +44,39 @@ class _LabResultsScreenState extends State<LabResultsScreen>
     );
   }
 
-  void _loadLabResults() {
-    Future.delayed(const Duration(seconds: 1), () {
+  Future<void> _loadAllData() async {
+    try {
+      setState(() => _isLoading = true);
+
+      final results = await Future.wait([
+        LabResultsService.getLabResults(),
+        LabResultsService.getMedicalRecords(),
+        LabResultsService.getPrescriptions(),
+      ]);
+
       setState(() {
-        _labResults = _generateLabResults();
+        _labResults = results[0] as List<LabResult>;
+        _medicalRecords = results[1] as List<MedicalRecord>;
+        _prescriptions =
+            results[2] as List<prescription_models.DigitalPrescription>;
         _isLoading = false;
       });
+
       _animationController.forward();
-    });
+
+      // Mark new items as read after viewing
+      _markNewItemsAsRead();
+    } catch (e) {
+      setState(() => _isLoading = false);
+      _showSnackBar('Gagal memuat data: ${e.toString()}');
+    }
   }
 
-  List<LabResult> _generateLabResults() {
-    return [
-      LabResult(
-        id: 'LAB_001',
-        testDate: DateTime.now().subtract(const Duration(days: 3)),
-        doctorName: 'Dr. Lisa Sari, Sp.M',
-        specialty: 'Spesialis Mata',
-        hospital: 'RS Mitra Keluarga',
-        testType: 'Pemeriksaan Refraksi Mata',
-        results: [
-          TestResult(
-            testName: 'Mata Kanan (OD)',
-            value: '-2.50',
-            unit: 'Dioptri',
-            normalRange: '0.00',
-            status: TestStatus.abnormal,
-            description: 'Miopia (Rabun Jauh)',
-          ),
-          TestResult(
-            testName: 'Mata Kiri (OS)',
-            value: '-2.25',
-            unit: 'Dioptri', 
-            normalRange: '0.00',
-            status: TestStatus.abnormal,
-            description: 'Miopia (Rabun Jauh)',
-          ),
-          TestResult(
-            testName: 'Astigmatisme OD',
-            value: '-0.75',
-            unit: 'Dioptri',
-            normalRange: '0.00',
-            status: TestStatus.abnormal,
-            description: 'Astigmatisme Ringan',
-          ),
-        ],
-        medications: [
-          Medication(
-            id: 'MED_001',
-            name: 'Systane Ultra Eye Drops',
-            dosage: '1-2 tetes',
-            frequency: '3x sehari',
-            duration: 14,
-            instructions: 'Teteskan pada mata yang kering, gunakan sebelum beraktivitas',
-            sideEffects: 'Mata berair sementara',
-            isActive: true,
-            reminderEnabled: true,
-            reminderTimes: ['08:00', '13:00', '19:00'],
-          ),
-        ],
-        doctorNotes: 'Pasien mengalami miopia dengan astigmatisme ringan. Disarankan menggunakan kacamata koreksi dan eye drops untuk mengurangi mata kering akibat penggunaan gadget.',
-        nextCheckup: DateTime.now().add(const Duration(days: 90)),
-      ),
-    ];
+  void _markNewItemsAsRead() {
+    // Mark new lab results as read
+    for (var labResult in _labResults.where((lab) => lab.isNew)) {
+      LabResultsService.markLabResultAsRead(labResult.id);
+    }
   }
 
   @override
@@ -117,7 +93,7 @@ class _LabResultsScreenState extends State<LabResultsScreen>
         elevation: 0,
         backgroundColor: Colors.white,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF2E7D89)),
+          icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF667EEA)),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
@@ -131,7 +107,7 @@ class _LabResultsScreenState extends State<LabResultsScreen>
         actions: [
           IconButton(
             onPressed: _refreshData,
-            icon: const Icon(Icons.refresh, color: Color(0xFF2E7D89)),
+            icon: const Icon(Icons.refresh_rounded, color: Color(0xFF667EEA)),
           ),
         ],
       ),
@@ -145,14 +121,16 @@ class _LabResultsScreenState extends State<LabResultsScreen>
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           CircularProgressIndicator(
-            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF2E7D89)),
+            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF667EEA)),
+            strokeWidth: 3,
           ),
-          SizedBox(height: 16),
+          SizedBox(height: 20),
           Text(
             'Memuat hasil lab dan resep...',
             style: TextStyle(
               color: Color(0xFF7F8C8D),
-              fontSize: 14,
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ],
@@ -165,32 +143,36 @@ class _LabResultsScreenState extends State<LabResultsScreen>
       opacity: _fadeAnimation,
       child: Column(
         children: [
-          _buildTabBar(),
-          Expanded(
-            child: _selectedTab == 'Hasil Lab' 
-                ? _buildLabResultsView()
-                : _buildMedicationsView(),
-          ),
+          _buildModernTabBar(),
+          Expanded(child: _buildSelectedTabContent()),
         ],
       ),
     );
   }
 
-  Widget _buildTabBar() {
+  Widget _buildModernTabBar() {
     return Container(
       margin: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(12),
+        color: const Color(0xFFF1F3F4),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Row(
         children: [
+          Expanded(child: _buildTabButton('Hasil Lab', Icons.science_rounded)),
           Expanded(
-            child: _buildTabButton('Hasil Lab', Icons.science),
-          ),
+              child: _buildTabButton(
+                  'Rekam Medis', Icons.medical_information_rounded)),
           Expanded(
-            child: _buildTabButton('Obat & Resep', Icons.medication),
-          ),
+              child: _buildTabButton('Resep Obat', Icons.medication_rounded)),
         ],
       ),
     );
@@ -199,29 +181,43 @@ class _LabResultsScreenState extends State<LabResultsScreen>
   Widget _buildTabButton(String title, IconData icon) {
     final isSelected = _selectedTab == title;
     return GestureDetector(
-      onTap: () => setState(() => _selectedTab = title),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
+      onTap: () {
+        HapticFeedback.lightImpact();
+        setState(() => _selectedTab = title);
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF2E7D89) : Colors.transparent,
+          color: isSelected ? const Color(0xFF667EEA) : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: const Color(0xFF667EEA).withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               icon,
               color: isSelected ? Colors.white : const Color(0xFF7F8C8D),
-              size: 18,
+              size: 20,
             ),
-            const SizedBox(width: 8),
+            const SizedBox(height: 4),
             Text(
               title,
               style: TextStyle(
                 color: isSelected ? Colors.white : const Color(0xFF7F8C8D),
-                fontSize: 14,
+                fontSize: 11,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
               ),
+              textAlign: TextAlign.center,
             ),
           ],
         ),
@@ -229,23 +225,40 @@ class _LabResultsScreenState extends State<LabResultsScreen>
     );
   }
 
+  Widget _buildSelectedTabContent() {
+    switch (_selectedTab) {
+      case 'Hasil Lab':
+        return _buildLabResultsView();
+      case 'Rekam Medis':
+        return _buildMedicalRecordsView();
+      case 'Resep Obat':
+        return _buildPrescriptionsView();
+      default:
+        return _buildLabResultsView();
+    }
+  }
+
   Widget _buildLabResultsView() {
     if (_labResults.isEmpty) {
-      return _buildEmptyState('Belum ada hasil lab', 'Hasil pemeriksaan lab akan muncul di sini');
+      return _buildEmptyState(
+        'Belum Ada Hasil Lab',
+        'Hasil pemeriksaan lab akan muncul di sini',
+        Icons.science_rounded,
+      );
     }
 
     return RefreshIndicator(
       onRefresh: _refreshData,
-      color: const Color(0xFF2E7D89),
+      color: const Color(0xFF667EEA),
       child: ListView.builder(
         padding: const EdgeInsets.symmetric(horizontal: 20),
         itemCount: _labResults.length,
         itemBuilder: (context, index) {
           return Padding(
             padding: const EdgeInsets.only(bottom: 16),
-            child: LabCardWidget(
+            child: LabResultCard(
               labResult: _labResults[index],
-              onTap: () => _showLabDetail(_labResults[index]),
+              onTap: () => _showLabResultDetail(_labResults[index]),
             ),
           );
         },
@@ -253,29 +266,135 @@ class _LabResultsScreenState extends State<LabResultsScreen>
     );
   }
 
-  Widget _buildMedicationsView() {
-    final medications = _labResults
-        .expand((lab) => lab.medications)
-        .where((med) => med.isActive)
-        .toList();
-
-    if (medications.isEmpty) {
-      return _buildEmptyState('Tidak ada obat aktif', 'Resep obat aktif akan muncul di sini');
+  Widget _buildMedicalRecordsView() {
+    if (_medicalRecords.isEmpty) {
+      return _buildEmptyState(
+        'Belum Ada Rekam Medis',
+        'Rekam medis dari konsultasi akan muncul di sini',
+        Icons.medical_information_rounded,
+      );
     }
 
     return RefreshIndicator(
       onRefresh: _refreshData,
-      color: const Color(0xFF2E7D89),
+      color: const Color(0xFF667EEA),
       child: ListView.builder(
         padding: const EdgeInsets.symmetric(horizontal: 20),
-        itemCount: medications.length,
+        itemCount: _medicalRecords.length,
         itemBuilder: (context, index) {
           return Padding(
             padding: const EdgeInsets.only(bottom: 16),
-            child: MedicationCardWidget(
-              medication: medications[index],
-              onTap: () => _showMedicationDetail(medications[index]),
-              onToggleReminder: (enabled) => _toggleMedicationReminder(medications[index], enabled),
+            child: _buildMedicalRecordCard(_medicalRecords[index]),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildMedicalRecordCard(MedicalRecord medicalRecord) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 15,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.medical_information_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      medicalRecord.diagnosis,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF2C3E50),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      medicalRecord.doctor.name,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Color(0xFF7F8C8D),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                DateFormat('dd/MM/yyyy').format(medicalRecord.visitDate),
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF7F8C8D),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Treatment: ${medicalRecord.treatment}',
+            style: const TextStyle(
+              fontSize: 14,
+              color: Color(0xFF2C3E50),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPrescriptionsView() {
+    if (_prescriptions.isEmpty) {
+      return _buildEmptyState(
+        'Belum Ada Resep',
+        'Resep obat dari dokter akan muncul di sini',
+        Icons.medication_rounded,
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _refreshData,
+      color: const Color(0xFF667EEA),
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        itemCount: _prescriptions.length,
+        itemBuilder: (context, index) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: PrescriptionCard(
+              prescription: _prescriptions[index],
+              onTap: () => _showPrescriptionDetail(_prescriptions[index]),
+              onPayTap: _prescriptions[index].paymentStatus ==
+                      prescription_models.PaymentStatus.PENDING
+                  ? () => _showPaymentDialog(_prescriptions[index])
+                  : null,
             ),
           );
         },
@@ -283,39 +402,45 @@ class _LabResultsScreenState extends State<LabResultsScreen>
     );
   }
 
-  Widget _buildEmptyState(String title, String subtitle) {
+  Widget _buildEmptyState(String title, String subtitle, IconData icon) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            width: 80,
-            height: 80,
+            width: 120,
+            height: 120,
             decoration: BoxDecoration(
-              color: Colors.grey[100],
-              borderRadius: BorderRadius.circular(40),
+              gradient: LinearGradient(
+                colors: [
+                  const Color(0xFF667EEA).withOpacity(0.1),
+                  const Color(0xFF764BA2).withOpacity(0.1),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(60),
             ),
             child: Icon(
-              _selectedTab == 'Hasil Lab' ? Icons.science : Icons.medication,
-              color: Colors.grey[400],
-              size: 40,
+              icon,
+              color: const Color(0xFF667EEA),
+              size: 60,
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 24),
           Text(
             title,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey[600],
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF2C3E50),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           Text(
             subtitle,
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey[500],
+            style: const TextStyle(
+              fontSize: 14,
+              color: Color(0xFF7F8C8D),
+              height: 1.5,
             ),
             textAlign: TextAlign.center,
           ),
@@ -324,269 +449,285 @@ class _LabResultsScreenState extends State<LabResultsScreen>
     );
   }
 
-  void _showLabDetail(LabResult labResult) {
+  void _showLabResultDetail(LabResult labResult) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.9,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.only(
-            topLeft: Radius.circular(24),
-            topRight: Radius.circular(24),
-          ),
-        ),
-        child: Column(
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(top: 12),
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
+      builder: (context) => _buildLabResultDetailSheet(labResult),
+    );
+  }
+
+  Widget _buildLabResultDetailSheet(LabResult labResult) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.8,
+      margin: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+              ),
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(20),
+                topRight: Radius.circular(20),
               ),
             ),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Detail Hasil Lab',
-                      style: const TextStyle(
-                        fontSize: 20,
+            child: Row(
+              children: [
+                const Icon(Icons.science_rounded,
+                    color: Colors.white, size: 24),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    labResult.testName,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close_rounded, color: Colors.white),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Hasil Pemeriksaan',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF2C3E50),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // Display lab results
+                  ...labResult.results.entries.map((entry) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            width: 120,
+                            child: Text(
+                              '${entry.key}:',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF7F8C8D),
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              entry.value.toString(),
+                              style: const TextStyle(
+                                color: Color(0xFF2C3E50),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                  if (labResult.doctorNotes != null) ...[
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Catatan Dokter',
+                      style: TextStyle(
+                        fontSize: 16,
                         fontWeight: FontWeight.bold,
                         color: Color(0xFF2C3E50),
                       ),
                     ),
-                    const SizedBox(height: 20),
-                    _buildLabDetailSection(labResult),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 8),
+                    Text(
+                      labResult.doctorNotes!,
+                      style: const TextStyle(
+                        color: Color(0xFF2C3E50),
+                        height: 1.5,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showPrescriptionDetail(
+      prescription_models.DigitalPrescription prescription) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => _buildPrescriptionDetailSheet(prescription),
+    );
+  }
+
+  Widget _buildPrescriptionDetailSheet(
+      prescription_models.DigitalPrescription prescription) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.8,
+      margin: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: prescription.isPaid
+                    ? [const Color(0xFF43E97B), const Color(0xFF38F9D7)]
+                    : [const Color(0xFFFFB74D), const Color(0xFFFF8A65)],
+              ),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(20),
+                topRight: Radius.circular(20),
+              ),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.medication_rounded,
+                    color: Colors.white, size: 24),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        prescription.prescriptionCode,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        prescription.doctor.name,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close_rounded, color: Colors.white),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Daftar Obat',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF2C3E50),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: prescription.medications.length,
+                      itemBuilder: (context, index) {
+                        final medication = prescription.medications[index];
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: const Color(0xFFE1E5E9),
+                              width: 1,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                medication.genericName,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF2C3E50),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                '${medication.dosage} - ${medication.frequency}',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF7F8C8D),
+                                ),
+                              ),
+                              Text(
+                                medication.instructions,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF7F8C8D),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  if (!prescription.isPaid) ...[
+                    const SizedBox(height: 16),
                     SizedBox(
                       width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () => Navigator.pop(context),
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _showPaymentDialog(prescription);
+                        },
+                        icon: const Icon(Icons.payment_rounded),
+                        label: Text(
+                            'Bayar - Rp ${prescription.totalAmount?.toStringAsFixed(0) ?? '0'}'),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF2E7D89),
+                          backgroundColor: const Color(0xFF667EEA),
+                          foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        child: const Text(
-                          'Tutup',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
                       ),
                     ),
                   ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLabDetailSection(LabResult labResult) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Basic Info
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF8FAFC),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey[200]!),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildDetailRow('Jenis Pemeriksaan', labResult.testType),
-              _buildDetailRow('Dokter', labResult.doctorName),
-              _buildDetailRow('Spesialisasi', labResult.specialty),
-              _buildDetailRow('Tanggal Tes', _formatDate(labResult.testDate)),
-              if (labResult.nextCheckup != null)
-                _buildDetailRow('Kontrol Berikutnya', _formatDate(labResult.nextCheckup!)),
-            ],
-          ),
-        ),
-        const SizedBox(height: 20),
-        
-        // Test Results
-        const Text(
-          'Hasil Pemeriksaan',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF2C3E50),
-          ),
-        ),
-        const SizedBox(height: 12),
-        ...labResult.results.map((result) => _buildTestResultCard(result)),
-        
-        const SizedBox(height: 20),
-        
-        // Doctor Notes
-        if (labResult.doctorNotes.isNotEmpty) ...[
-          const Text(
-            'Catatan Dokter',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF2C3E50),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFF9E6),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFFFC107).withOpacity(0.3)),
-            ),
-            child: Text(
-              labResult.doctorNotes,
-              style: const TextStyle(
-                fontSize: 14,
-                color: Color(0xFF2C3E50),
-                height: 1.5,
-              ),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildTestResultCard(TestResult result) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: _getStatusColor(result.status).withOpacity(0.3),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  result.testName,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF2C3E50),
-                  ),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: _getStatusColor(result.status).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  _getStatusText(result.status),
-                  style: TextStyle(
-                    color: _getStatusColor(result.status),
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Text(
-                'Hasil: ',
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF7F8C8D),
-                ),
-              ),
-              Text(
-                '${result.value} ${result.unit}',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: _getStatusColor(result.status),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Text(
-                'Normal: ${result.normalRange}',
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF7F8C8D),
-                ),
-              ),
-            ],
-          ),
-          if (result.description.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              result.description,
-              style: const TextStyle(
-                fontSize: 12,
-                color: Color(0xFF2C3E50),
-                fontStyle: FontStyle.italic,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              label,
-              style: const TextStyle(
-                fontSize: 13,
-                color: Color(0xFF7F8C8D),
-              ),
-            ),
-          ),
-          const Text(
-            ': ',
-            style: TextStyle(
-              fontSize: 13,
-              color: Color(0xFF7F8C8D),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF2C3E50),
+                ],
               ),
             ),
           ),
@@ -595,95 +736,53 @@ class _LabResultsScreenState extends State<LabResultsScreen>
     );
   }
 
-  void _showMedicationDetail(Medication medication) {
-    showModalBottomSheet(
+  void _showPaymentDialog(
+      prescription_models.DigitalPrescription prescription) {
+    showDialog(
       context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => NotificationSetupWidget(
-        medication: medication,
-        onSave: (updatedMedication) => _updateMedication(updatedMedication),
+      builder: (context) => PaymentDialog(
+        prescription: prescription,
+        onPaymentSuccess: () {
+          _refreshData();
+          _showSnackBar('Pembayaran berhasil! Resep sedang diproses');
+
+          // Setup notification reminder
+          _setupMedicationReminders(prescription);
+        },
       ),
     );
   }
 
-  void _toggleMedicationReminder(Medication medication, bool enabled) {
-    setState(() {
-      final index = _labResults
-          .expand((lab) => lab.medications)
-          .toList()
-          .indexOf(medication);
-      if (index != -1) {
-        medication.reminderEnabled = enabled;
-      }
-    });
-    
-    _showSnackBar(enabled 
-        ? 'Pengingat obat diaktifkan' 
-        : 'Pengingat obat dinonaktifkan');
-  }
-
-  void _updateMedication(Medication updatedMedication) {
-    // Update medication in the list
-    _showSnackBar('Pengaturan pengingat berhasil disimpan');
+  void _setupMedicationReminders(
+      prescription_models.DigitalPrescription prescription) {
+    for (var medication in prescription.medications) {
+      NotificationService.scheduleNotification(
+        id: medication.medicationId.hashCode,
+        title: 'Pengingat Minum Obat',
+        body: '${medication.genericName} - ${medication.dosage}',
+        scheduledDate: DateTime.now().add(const Duration(hours: 8)),
+      );
+    }
   }
 
   Future<void> _refreshData() async {
-    setState(() => _isLoading = true);
-    await Future.delayed(const Duration(seconds: 1));
-    setState(() {
-      _labResults = _generateLabResults();
-      _isLoading = false;
-    });
-  }
-
-  Color _getStatusColor(TestStatus status) {
-    switch (status) {
-      case TestStatus.normal:
-        return const Color(0xFF2ECC71);
-      case TestStatus.abnormal:
-        return const Color(0xFFE74C3C);
-      case TestStatus.borderline:
-        return const Color(0xFFF39C12);
-    }
-  }
-
-  String _getStatusText(TestStatus status) {
-    switch (status) {
-      case TestStatus.normal:
-        return 'Normal';
-      case TestStatus.abnormal:
-        return 'Abnormal';
-      case TestStatus.borderline:
-        return 'Batas';
-    }
-  }
-
-  String _formatDate(DateTime date) {
-    final days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-    final months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
-      'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'
-    ];
-
-    final day = days[date.weekday % 7];
-    final dayNum = date.day;
-    final month = months[date.month - 1];
-    final year = date.year;
-
-    return '$day, $dayNum $month $year';
+    HapticFeedback.lightImpact();
+    await _loadAllData();
   }
 
   void _showSnackBar(String message) {
+    if (!mounted) return;
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: const Color(0xFF2E7D89),
+        backgroundColor: const Color(0xFF667EEA),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
         ),
         margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 3),
       ),
     );
   }

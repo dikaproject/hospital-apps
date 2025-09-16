@@ -1,13 +1,23 @@
 // Fix: lib/screens/consultation/ai_consultation_screen.dart
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:convert';
 import '../../models/chat_models.dart' as chat; // Use alias
 import '../../models/consultation_models.dart';
 import '../../services/consultation_service.dart';
 import 'consultation_result_screen.dart';
+import '../../services/auth_service.dart';
+import '../../services/http_service.dart';
 
 class AIConsultationScreen extends StatefulWidget {
-  const AIConsultationScreen({super.key});
+  final String? existingConsultationId;
+  final List<Map<String, dynamic>>? chatHistory;
+
+  const AIConsultationScreen({
+    super.key,
+    this.existingConsultationId,
+    this.chatHistory,
+  });
 
   @override
   State<AIConsultationScreen> createState() => _AIConsultationScreenState();
@@ -51,7 +61,14 @@ class _AIConsultationScreenState extends State<AIConsultationScreen>
   void initState() {
     super.initState();
     _setupAnimations();
-    _addWelcomeMessage();
+
+    // Resume existing consultation if provided
+    if (widget.existingConsultationId != null) {
+      _currentConsultationId = widget.existingConsultationId;
+      _resumeExistingConsultation();
+    } else {
+      _addWelcomeMessage();
+    }
   }
 
   @override
@@ -85,6 +102,215 @@ class _AIConsultationScreenState extends State<AIConsultationScreen>
     });
     _scrollToBottom();
   }
+
+  void _loadCurrentAIQuestion() async {
+  if (_currentConsultationId == null) {
+    print('⚠️ No consultation ID available');
+    return;
+  }
+
+  try {
+    print('🔍 Loading current AI question from aiAnalysis...');
+    
+    // Get consultation details from backend
+    final response = await HttpService.get(
+      '/api/consultations/details/$_currentConsultationId',
+      token: AuthService.getCurrentToken(),
+    );
+
+    if (response.statusCode == 200) {
+      final responseData = json.decode(response.body);
+      
+      if (responseData['success'] == true) {
+        final consultation = responseData['data']['consultation'];
+        final aiAnalysis = consultation['aiAnalysis'];
+        
+        print('📋 AI Analysis from DB: $aiAnalysis');
+        
+        if (aiAnalysis != null) {
+          // Check if there's a current question in aiAnalysis
+          if (aiAnalysis['type'] == 'FOLLOW_UP_QUESTION' && aiAnalysis['question'] != null) {
+            final currentQuestion = aiAnalysis['question'];
+            final questionNumber = aiAnalysis['questionNumber'] ?? _questionCount + 1;
+            final totalQuestions = aiAnalysis['totalQuestions'] ?? 5;
+            
+            print('❓ Found current question: $currentQuestion');
+            
+            // Check if this question is already in chat history
+            final questionAlreadyExists = _messages.any((msg) => 
+              !msg.isUser && msg.text.contains(currentQuestion.substring(0, 20.clamp(0, currentQuestion.length)))
+            );
+            
+            if (!questionAlreadyExists) {
+              // Add the current question from aiAnalysis to chat
+              setState(() {
+                _messages.add(
+                  chat.ChatMessage(
+                    text: currentQuestion,
+                    isUser: false,
+                    metadata: {
+                      'isQuestion': true,
+                      'questionNumber': questionNumber,
+                      'totalQuestions': totalQuestions,
+                      'progress': {
+                        'current': questionNumber,
+                        'total': totalQuestions,
+                        'percentage': ((questionNumber / totalQuestions) * 100).round()
+                      },
+                    },
+                  ),
+                );
+              });
+              
+              _scrollToBottom();
+            } else {
+              // Question already exists, just add a small resume notice
+              setState(() {
+                _messages.add(
+                  chat.ChatMessage(
+                    text: '💡 Konsultasi dilanjutkan. Silakan jawab pertanyaan di atas.',
+                    isUser: false,
+                    metadata: {'isSystemMessage': true, 'isResume': true},
+                  ),
+                );
+              });
+              
+              _scrollToBottom();
+            }
+            
+          } else if (aiAnalysis['type'] == 'FINAL_DIAGNOSIS') {
+            // Analysis is already complete
+            print('✅ Analysis already complete');
+            
+            setState(() {
+              _isCollectingInfo = false;
+              _messages.add(
+                chat.ChatMessage(
+                  text: '✅ Analisis telah selesai. Anda dapat melihat hasil lengkap di halaman hasil.',
+                  isUser: false,
+                  metadata: {'isSystemMessage': true, 'isComplete': true},
+                ),
+              );
+            });
+            
+            _scrollToBottom();
+          } else {
+            // No valid AI question, continue from last response
+            print('🔄 No current question found, continuing from last response...');
+            _continueFromLastResponse();
+          }
+        } else {
+          // No AI analysis yet, continue from last response
+          print('📝 No AI analysis found, continuing consultation...');
+          _continueFromLastResponse();
+        }
+      }
+    }
+    
+  } catch (e) {
+    print('❌ Error loading AI question: $e');
+    // Fallback: show resume message
+    setState(() {
+      _messages.add(
+        chat.ChatMessage(
+          text: '💡 Konsultasi dilanjutkan. Silakan lanjutkan menjawab pertanyaan sebelumnya.',
+          isUser: false,
+          metadata: {'isSystemMessage': true, 'isResume': true},
+        ),
+      );
+    });
+    _scrollToBottom();
+  }
+}
+
+ void _resumeExistingConsultation() {
+  if (widget.chatHistory != null && widget.chatHistory!.isNotEmpty) {
+    try {
+      setState(() {
+        _messages = widget.chatHistory!.map((msg) {
+          try {
+            return chat.ChatMessage.fromJson(msg);
+          } catch (e) {
+            print('Error parsing message: $e');
+            return chat.ChatMessage(
+              text: msg['text']?.toString() ?? 'Pesan tidak dapat dimuat',
+              isUser: msg['isUser'] == true,
+            );
+          }
+        }).toList();
+
+        // Count questions to determine current state
+        _questionCount = _messages
+            .where((msg) =>
+                !msg.isUser && 
+                !msg.text.contains('Halo! Saya AI Assistant') &&
+                !msg.text.contains('Konsultasi dilanjutkan'))
+            .length;
+
+        // Check if still collecting info
+        _isCollectingInfo = _questionCount < 5;
+      });
+
+      // The key fix: Get the actual AI analysis from backend instead of just showing resume message
+      _loadCurrentAIQuestion();
+
+    } catch (e) {
+      print('Error resuming consultation: $e');
+      _addWelcomeMessage();
+      return;
+    }
+  } else {
+    _addWelcomeMessage();
+    return;
+  }
+
+  _scrollToBottom();
+}
+
+// Add new method to continue from last response
+void _continueFromLastResponse() async {
+  if (_currentConsultationId == null) return;
+
+  try {
+    setState(() {
+      _isLoading = true;
+    });
+
+    // Get the last user message
+    final lastUserMessage = _messages.lastWhere(
+      (msg) => msg.isUser,
+      orElse: () => chat.ChatMessage(text: '', isUser: true),
+    );
+
+    if (lastUserMessage.text.isNotEmpty) {
+      print('🔄 Continuing consultation from last response: ${lastUserMessage.text}');
+
+      final result = await ConsultationService.continueAIConsultation(
+        consultationId: _currentConsultationId!,
+        userResponse: lastUserMessage.text,
+        chatHistory: _convertMessagesToHistory(),
+      );
+
+      await _handleAIResponse(result);
+    }
+  } catch (e) {
+    print('❌ Error continuing consultation: $e');
+    setState(() {
+      _messages.add(
+        chat.ChatMessage(
+          text: 'Maaf, terjadi kesalahan saat melanjutkan konsultasi. Silakan lanjutkan dengan menjawab pertanyaan sebelumnya.',
+          isUser: false,
+          metadata: {'isSystemMessage': true},
+        ),
+      );
+    });
+  } finally {
+    setState(() {
+      _isLoading = false;
+    });
+    _scrollToBottom();
+  }
+}
 
   // Add missing _scrollToBottom method
   void _scrollToBottom() {
@@ -559,153 +785,205 @@ class _AIConsultationScreenState extends State<AIConsultationScreen>
   }
 
   Widget _buildMessageBubble(chat.ChatMessage message) {
-    final isUser = message.isUser;
-    // Safe access to metadata with null check
-    final metadata = message.metadata ?? {};
-    final isQuestion = metadata['isQuestion'] == true;
-    final isFinalDiagnosis = metadata['isFinalDiagnosis'] == true;
+  final isUser = message.isUser;
+  final metadata = message.metadata ?? {};
+  final isQuestion = metadata['isQuestion'] == true;
+  final isFinalDiagnosis = metadata['isFinalDiagnosis'] == true;
+  final isSystemMessage = metadata['isSystemMessage'] == true;
+  final isResume = metadata['isResume'] == true;
+  final isComplete = metadata['isComplete'] == true;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      child: Row(
-        mainAxisAlignment:
-            isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (!isUser) ...[
-            _buildAIAvatar(isQuestion: isQuestion, isFinal: isFinalDiagnosis),
-            const SizedBox(width: 12),
-          ],
-          Flexible(
-            child: Container(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.75,
+  return Container(
+    margin: const EdgeInsets.only(bottom: 16),
+    child: Row(
+      mainAxisAlignment:
+          isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (!isUser) ...[
+          _buildAIAvatar(
+            isQuestion: isQuestion, 
+            isFinal: isFinalDiagnosis,
+            isSystem: isSystemMessage,
+            isComplete: isComplete,
+          ),
+          const SizedBox(width: 12),
+        ],
+        Flexible(
+          child: Container(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.75,
+            ),
+            padding: EdgeInsets.all(isSystemMessage ? 12 : 16),
+            decoration: BoxDecoration(
+              color: isUser
+                  ? const Color(0xFF2E7D89)
+                  : isFinalDiagnosis
+                      ? Colors.green[50]
+                      : isQuestion
+                          ? Colors.blue[50]
+                          : isSystemMessage
+                              ? Colors.amber[50]
+                              : Colors.white,
+              borderRadius: BorderRadius.circular(isSystemMessage ? 12 : 20).copyWith(
+                bottomLeft: Radius.circular(isUser ? 20 : 4),
+                bottomRight: Radius.circular(isUser ? 4 : 20),
               ),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: isUser
-                    ? const Color(0xFF2E7D89)
-                    : isFinalDiagnosis
-                        ? Colors.green[50]
-                        : isQuestion
-                            ? Colors.blue[50]
-                            : Colors.white,
-                borderRadius: BorderRadius.circular(20).copyWith(
-                  bottomLeft: Radius.circular(isUser ? 20 : 4),
-                  bottomRight: Radius.circular(isUser ? 4 : 20),
+              border: !isUser && (isQuestion || isFinalDiagnosis || isSystemMessage)
+                  ? Border.all(
+                      color: isQuestion 
+                          ? Colors.blue[200]! 
+                          : isFinalDiagnosis 
+                              ? Colors.green[200]!
+                              : Colors.amber[200]!,
+                      width: 1,
+                    )
+                  : null,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(isSystemMessage ? 0.05 : 0.1),
+                  blurRadius: isSystemMessage ? 4 : 8,
+                  offset: Offset(0, isSystemMessage ? 2 : 4),
                 ),
-                border: !isUser && (isQuestion || isFinalDiagnosis)
-                    ? Border.all(
-                        color:
-                            isQuestion ? Colors.blue[200]! : Colors.green[200]!,
-                        width: 1,
-                      )
-                    : null,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (isQuestion && metadata['progress'] != null)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Row(
-                        children: [
-                          Icon(Icons.help_outline,
-                              size: 16, color: Colors.blue[600]),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Pertanyaan ${metadata['progress']['current']}/${metadata['progress']['total']}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.blue[600],
-                              fontWeight: FontWeight.bold,
-                            ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (isQuestion && metadata['progress'] != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        Icon(Icons.help_outline,
+                            size: 16, color: Colors.blue[600]),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Pertanyaan ${metadata['progress']['current']}/${metadata['progress']['total']}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.blue[600],
+                            fontWeight: FontWeight.bold,
                           ),
-                        ],
-                      ),
-                    ),
-                  if (isFinalDiagnosis)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Row(
-                        children: [
-                          Icon(Icons.medical_services,
-                              size: 16, color: Colors.green[600]),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Hasil Analisis Medis',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.green[600],
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  Text(
-                    message.text,
-                    style: TextStyle(
-                      color: isUser ? Colors.white : const Color(0xFF2C3E50),
-                      fontSize: 14,
-                      height: 1.4,
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
+                if (isFinalDiagnosis)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        Icon(Icons.medical_services,
+                            size: 16, color: Colors.green[600]),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Hasil Analisis Medis',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.green[600],
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                if (isSystemMessage && !isFinalDiagnosis)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(
+                      children: [
+                        Icon(
+                          isComplete ? Icons.check_circle : Icons.info_outline,
+                          size: 14, 
+                          color: isComplete ? Colors.green[600] : Colors.amber[700],
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          isComplete ? 'Konsultasi Selesai' : 'Sistem',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isComplete ? Colors.green[600] : Colors.amber[700],
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                Text(
+                  message.text,
+                  style: TextStyle(
+                    color: isUser 
+                        ? Colors.white 
+                        : isSystemMessage
+                            ? (isComplete ? Colors.green[700] : Colors.amber[800])
+                            : const Color(0xFF2C3E50),
+                    fontSize: isSystemMessage ? 13 : 14,
+                    height: 1.4,
+                    fontWeight: isSystemMessage ? FontWeight.w500 : FontWeight.normal,
+                  ),
+                ),
+              ],
             ),
           ),
-          if (isUser) ...[
-            const SizedBox(width: 12),
-            _buildUserAvatar(),
-          ],
+        ),
+        if (isUser) ...[
+          const SizedBox(width: 12),
+          _buildUserAvatar(),
         ],
-      ),
-    );
+      ],
+    ),
+  );
+}
+
+  Widget _buildAIAvatar({
+  bool isQuestion = false, 
+  bool isFinal = false, 
+  bool isSystem = false,
+  bool isComplete = false,
+}) {
+  Color color1, color2;
+  IconData icon;
+
+  if (isFinal) {
+    color1 = const Color(0xFF27AE60);
+    color2 = const Color(0xFF2ECC71);
+    icon = Icons.medical_services;
+  } else if (isComplete) {
+    color1 = const Color(0xFF27AE60);
+    color2 = const Color(0xFF2ECC71);
+    icon = Icons.check_circle;
+  } else if (isQuestion) {
+    color1 = const Color(0xFF3498DB);
+    color2 = const Color(0xFF5DADE2);
+    icon = Icons.help_outline;
+  } else if (isSystem) {
+    color1 = const Color(0xFFF39C12);
+    color2 = const Color(0xFFE67E22);
+    icon = Icons.info_outline;
+  } else {
+    color1 = const Color(0xFF2E7D89);
+    color2 = const Color(0xFF4ECDC4);
+    icon = Icons.smart_toy;
   }
 
-  Widget _buildAIAvatar({bool isQuestion = false, bool isFinal = false}) {
-    Color color1, color2;
-    IconData icon;
-
-    if (isFinal) {
-      color1 = const Color(0xFF27AE60);
-      color2 = const Color(0xFF2ECC71);
-      icon = Icons.medical_services;
-    } else if (isQuestion) {
-      color1 = const Color(0xFF3498DB);
-      color2 = const Color(0xFF5DADE2);
-      icon = Icons.help_outline;
-    } else {
-      color1 = const Color(0xFF2E7D89);
-      color2 = const Color(0xFF4ECDC4);
-      icon = Icons.smart_toy;
-    }
-
-    return Container(
-      width: 40,
-      height: 40,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [color1, color2]),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: color1.withOpacity(0.3),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Icon(icon, color: Colors.white, size: 20),
-    );
-  }
+  return Container(
+    width: 40,
+    height: 40,
+    decoration: BoxDecoration(
+      gradient: LinearGradient(colors: [color1, color2]),
+      borderRadius: BorderRadius.circular(20),
+      boxShadow: [
+        BoxShadow(
+          color: color1.withOpacity(0.3),
+          blurRadius: 8,
+          offset: const Offset(0, 4),
+        ),
+      ],
+    ),
+    child: Icon(icon, color: Colors.white, size: 20),
+  );
+}
 
   Widget _buildLoadingIndicator() {
     return Container(

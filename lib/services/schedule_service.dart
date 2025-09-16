@@ -185,14 +185,48 @@ class ScheduleService {
     }
   }
 
+  // Mark consultation as completed (not cancelled)
+  static Future<void> markConsultationCompleted(String consultationId) async {
+    try {
+      print('✅ Marking consultation completed: $consultationId');
+
+      final response = await HttpService.post(
+        '/api/consultations/complete',
+        {
+          'consultationId': consultationId,
+          'reason': 'USER_COMPLETED',
+        },
+        token: AuthService.getCurrentToken(),
+      );
+
+      print('📥 Complete consultation response: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+
+        if (responseData['success'] != true) {
+          throw Exception(
+              responseData['message'] ?? 'Failed to complete consultation');
+        }
+      } else {
+        final errorData = json.decode(response.body);
+        throw Exception(
+            errorData['message'] ?? 'Failed to complete consultation');
+      }
+    } catch (e) {
+      print('❌ Complete consultation error: $e');
+      throw Exception('Failed to complete consultation: $e');
+    }
+  }
+
   // Get consultation details
-  static Future<ScheduleConsultationItem> getConsultationDetails(
+  static Future<Map<String, dynamic>> getConsultationDetails(
       String consultationId) async {
     try {
       print('📋 Getting consultation details: $consultationId');
 
       final response = await HttpService.get(
-        '/api/consultations/$consultationId',
+        '/api/consultations/details/$consultationId',
         token: AuthService.getCurrentToken(),
       );
 
@@ -202,8 +236,7 @@ class ScheduleService {
         final responseData = json.decode(response.body);
 
         if (responseData['success'] == true) {
-          return ScheduleConsultationItem.fromJson(
-              responseData['data']['consultation']);
+          return responseData['data']['consultation'];
         } else {
           throw Exception(
               responseData['message'] ?? 'Failed to get consultation details');

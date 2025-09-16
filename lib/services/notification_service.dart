@@ -1,4 +1,3 @@
-// Update: lib/services/notification_service.dart - Add real push integration
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:convert';
@@ -6,7 +5,9 @@ import 'dart:io';
 import '../models/notification_models.dart';
 import 'http_service.dart';
 import 'auth_service.dart';
-import 'push_notification_service.dart'; // Add this import
+import 'push_notification_service.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/timezone.dart' as tz;
 
 class NotificationAPIResponse {
   final List<HospitalNotification> notifications;
@@ -34,6 +35,8 @@ class NotificationService {
   static NotificationSettings _settings = NotificationSettings();
   static final List<HospitalNotification> _localNotifications = [];
   static final List<Function(HospitalNotification)> _listeners = [];
+  static final FlutterLocalNotificationsPlugin _notifications =
+      FlutterLocalNotificationsPlugin();
 
   // Initialize notification service
   static Future<void> initialize() async {
@@ -45,6 +48,15 @@ class NotificationService {
       // Initialize real push notifications
       await PushNotificationService.initialize();
       PushNotificationService.setupNotificationListeners();
+
+      // Initialize local notifications
+      const AndroidInitializationSettings initializationSettingsAndroid =
+          AndroidInitializationSettings('@mipmap/ic_launcher');
+
+      const InitializationSettings initializationSettings =
+          InitializationSettings(android: initializationSettingsAndroid);
+
+      await _notifications.initialize(initializationSettings);
 
       print('NotificationService initialized successfully');
     } catch (e) {
@@ -471,5 +483,66 @@ class NotificationService {
 
   static int getUnreadLocalCount() {
     return _localNotifications.where((n) => !n.isRead).length;
+  }
+
+  // Notification scheduling
+  static Future<void> scheduleNotification({
+    required int id,
+    required String title,
+    required String body,
+    required DateTime scheduledDate,
+  }) async {
+    await _notifications.zonedSchedule(
+      id,
+      title,
+      body,
+      tz.TZDateTime.from(scheduledDate, tz.local),
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'medication_reminders',
+          'Pengingat Obat',
+          channelDescription: 'Pengingat untuk minum obat sesuai resep dokter',
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+          enableVibration: true,
+          playSound: true,
+        ),
+      ),
+      androidAllowWhileIdle: true,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+    );
+  }
+
+  // Immediate notification (for testing)
+  static Future<void> showNotification({
+    required int id,
+    required String title,
+    required String body,
+  }) async {
+    await _notifications.show(
+      id,
+      title,
+      body,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'medication_test',
+          'Test Pengingat',
+          channelDescription: 'Test untuk pengingat obat',
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+        ),
+      ),
+    );
+  }
+
+  static Future<void> cancelNotification(int id) async {
+    await _notifications.cancel(id);
+  }
+
+  static Future<void> cancelAllNotifications() async {
+    await _notifications.cancelAll();
   }
 }

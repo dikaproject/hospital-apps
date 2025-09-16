@@ -1,51 +1,19 @@
 import 'package:flutter/material.dart';
-import '../screens/family/family_qr_scanner_screen.dart';
-
-enum QRScannerType {
-  family,
-  queue,
-  payment,
-  medical,
-}
+import '../screens/qr/qr_show_screen.dart';
 
 class QRScannerFactory {
-  static Widget createScanner({
-    required QRScannerType type,
-    required Function(String) onQRScanned,
-    Map<String, dynamic>? additionalParams,
+  
+  // Main entry point untuk QR functionality
+  static Widget createQRScreen({
+    String? purpose, // 'queue', 'checkin', 'general'
   }) {
-    switch (type) {
-      case QRScannerType.family:
-        return FamilyQRScannerScreen(
-          onFamilyQRScanned: onQRScanned,
-        );
-
-      case QRScannerType.queue:
-        throw UnimplementedError('Queue QR scanner not implemented yet');
-
-      case QRScannerType.payment:
-        throw UnimplementedError('Payment QR scanner not implemented yet');
-
-      case QRScannerType.medical:
-        throw UnimplementedError('Medical QR scanner not implemented yet');
-    }
+    // Sekarang hanya return show QR screen
+    return const QRShowScreen();
   }
 
-  static void navigateToScanner(
-    BuildContext context, {
-    required QRScannerType type,
-    required Function(String) onQRScanned,
-    Map<String, dynamic>? additionalParams,
-  }) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => createScanner(
-          type: type,
-          onQRScanned: onQRScanned,
-          additionalParams: additionalParams,
-        ),
-      ),
-    );
+  // For future staff/admin QR scanner
+  static Widget createStaffQRScanner() {
+    // This will be implemented for staff side
+    throw UnimplementedError('Staff QR Scanner will be implemented in admin panel');
   }
 }

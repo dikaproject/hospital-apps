@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'dart:math';
 import '../../models/medical_history_models.dart';
+import '../../services/medical_history_service.dart';
 import '../../services/auth_service.dart';
+import '../../models/consultation_models.dart'; 
 
 class MedicalHistoryScreen extends StatefulWidget {
   const MedicalHistoryScreen({super.key});
@@ -15,9 +16,14 @@ class _MedicalHistoryScreenState extends State<MedicalHistoryScreen>
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
 
-  List<MedicalRecord> _medicalHistory = [];
+  List<MedicalHistoryItem> _allHistory = [];
+  List<ConsultationHistory> _consultations = [];
+  List<QueueHistory> _queues = [];
+  List<PrescriptionHistory> _prescriptions = [];
+  
   bool _isLoading = true;
   String _selectedFilter = 'Semua';
+  String? _error;
 
   @override
   void initState() {
@@ -36,150 +42,123 @@ class _MedicalHistoryScreenState extends State<MedicalHistoryScreen>
     );
   }
 
-  void _loadMedicalHistory() {
-    Future.delayed(const Duration(seconds: 1), () {
-      setState(() {
-        _medicalHistory = _generateMedicalHistory();
-        _isLoading = false;
-      });
-      _animationController.forward();
+  Future<void> _loadMedicalHistory() async {
+  try {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    print('🏥 Loading medical history from backend...');
+
+    // Load combined medical history from backend
+    final combinedData = await MedicalHistoryService.getCombinedMedicalHistory();
+    
+    print('📊 Received combined data: ${combinedData.keys}');
+    
+    // Clear existing data
+    _consultations.clear();
+    _queues.clear();
+    _prescriptions.clear();
+    
+    // Parse consultations with error handling
+    if (combinedData['consultations'] != null) {
+      final consultationsData = combinedData['consultations'] as List;
+      for (final consultationJson in consultationsData) {
+        try {
+          final consultation = ConsultationHistory.fromJson(
+            consultationJson is Map<String, dynamic> 
+                ? consultationJson 
+                : Map<String, dynamic>.from(consultationJson as Map)
+          );
+          _consultations.add(consultation);
+        } catch (e) {
+          print('❌ Error parsing consultation: $e');
+        }
+      }
+      print('💬 Loaded ${_consultations.length} consultations');
+    }
+
+    // Parse queues with error handling
+    if (combinedData['queues'] != null) {
+      final queuesData = combinedData['queues'] as List;
+      for (final queueJson in queuesData) {
+        try {
+          final queue = QueueHistory.fromJson(
+            queueJson is Map<String, dynamic> 
+                ? queueJson 
+                : Map<String, dynamic>.from(queueJson as Map)
+          );
+          _queues.add(queue);
+        } catch (e) {
+          print('❌ Error parsing queue: $e');
+        }
+      }
+      print('🔢 Loaded ${_queues.length} queues');
+    }
+
+    // Parse prescriptions with error handling
+    if (combinedData['prescriptions'] != null) {
+      final prescriptionsData = combinedData['prescriptions'] as List;
+      for (final prescriptionJson in prescriptionsData) {
+        try {
+          final prescription = PrescriptionHistory.fromJson(
+            prescriptionJson is Map<String, dynamic> 
+                ? prescriptionJson 
+                : Map<String, dynamic>.from(prescriptionJson as Map)
+          );
+          _prescriptions.add(prescription);
+        } catch (e) {
+          print('❌ Error parsing prescription: $e');
+        }
+      }
+      print('💊 Loaded ${_prescriptions.length} prescriptions');
+    }
+
+    // Combine all history items
+    _combineHistoryItems();
+
+    setState(() {
+      _isLoading = false;
+    });
+
+    _animationController.forward();
+
+  } catch (e) {
+    print('❌ Error loading medical history: $e');
+    setState(() {
+      _isLoading = false;
+      _error = 'Gagal memuat riwayat medis. Silakan coba lagi.';
     });
   }
+}
 
-  List<MedicalRecord> _generateMedicalHistory() {
-    final random = Random();
-    final records = <MedicalRecord>[];
+  void _combineHistoryItems() {
+    final List<MedicalHistoryItem> allItems = [];
 
-    // Generate 8-12 medical records
-    final recordCount = random.nextInt(5) + 8;
-
-    for (int i = 0; i < recordCount; i++) {
-      final visitDate = DateTime.now().subtract(Duration(
-        days: random.nextInt(365) + 1,
-      ));
-
-      records.add(MedicalRecord(
-        id: 'MR_${random.nextInt(10000)}',
-        visitDate: visitDate,
-        doctorName: [
-          'Dr. Sarah Wijaya, Sp.PD',
-          'Dr. Ahmad Budi, Sp.JP',
-          'Dr. Lisa Sari, Sp.M',
-          'Dr. Andi Pratama',
-          'Dr. Maya Sari, Sp.OG',
-          'Dr. Budi Santoso, Sp.B',
-          'Dr. Sinta Dewi, Sp.A'
-        ][random.nextInt(7)],
-        specialty: [
-          'Spesialis Penyakit Dalam',
-          'Spesialis Jantung',
-          'Spesialis Mata',
-          'Dokter Umum',
-          'Spesialis Kandungan',
-          'Spesialis Bedah',
-          'Spesialis Anak'
-        ][random.nextInt(7)],
-        hospital: 'RS Mitra Keluarga',
-        diagnosis: [
-          'Hipertensi Grade 1',
-          'Diabetes Mellitus Tipe 2',
-          'Gastritis Akut',
-          'Rhinitis Alergi',
-          'Migrain',
-          'Anemia Defisiensi Besi',
-          'Pneumonia',
-          'Bronkitis Akut'
-        ][random.nextInt(8)],
-        treatment: [
-          'Terapi obat antihipertensi',
-          'Diet dan kontrol gula darah',
-          'Terapi asam lambung',
-          'Antihistamin dan spray hidung',
-          'Analgesik dan istirahat',
-          'Suplemen zat besi',
-          'Antibiotik dan bronkodilator',
-          'Ekspektoran dan istirahat'
-        ][random.nextInt(8)],
-        prescription: _generatePrescription(),
-        totalCost: (random.nextInt(500) + 100) * 1000,
-        paymentMethod: [
-          PaymentMethod.cash,
-          PaymentMethod.bpjs,
-          PaymentMethod.insurance,
-          PaymentMethod.creditCard
-        ][random.nextInt(4)],
-        paymentStatus: PaymentStatus.paid,
-        notes: [
-          'Kontrol kembali 2 minggu',
-          'Pantau gejala, kembali jika memburuk',
-          'Hindari makanan pedas dan asam',
-          'Gunakan masker saat keluar rumah',
-          'Istirahat cukup dan hindari stress',
-          'Konsumsi makanan tinggi zat besi',
-          'Habiskan antibiotik sesuai dosis',
-          'Minum air putih yang cukup'
-        ][random.nextInt(8)],
-        documents: _generateDocuments(),
-        queueNumber: 'A-${random.nextInt(50) + 1}',
-      ));
+    // Add consultations
+    for (final consultation in _consultations) {
+      allItems.add(MedicalHistoryItem.fromConsultation(consultation));
     }
 
-    records.sort((a, b) => b.visitDate.compareTo(a.visitDate));
-    return records;
-  }
-
-  List<String> _generatePrescription() {
-    final medications = [
-      'Amlodipine 5mg - 1x1 pagi',
-      'Metformin 500mg - 2x1 sebelum makan',
-      'Omeprazole 20mg - 1x1 pagi sebelum makan',
-      'Loratadine 10mg - 1x1 malam',
-      'Paracetamol 500mg - 3x1 bila perlu',
-      'Sangobion 1 tablet - 1x1 setelah makan',
-      'Amoxicillin 500mg - 3x1 sesudah makan',
-      'Salbutamol inhaler - 2 puff bila sesak'
-    ];
-
-    final random = Random();
-    final prescriptionCount = random.nextInt(3) + 1;
-    final prescription = <String>[];
-
-    for (int i = 0; i < prescriptionCount; i++) {
-      prescription.add(medications[random.nextInt(medications.length)]);
+    // Add queues
+    for (final queue in _queues) {
+      allItems.add(MedicalHistoryItem.fromQueue(queue));
     }
 
-    return prescription;
-  }
-
-  List<MedicalDocument> _generateDocuments() {
-    final random = Random();
-    final documents = <MedicalDocument>[];
-
-    // Generate 1-3 documents
-    final docCount = random.nextInt(3) + 1;
-
-    for (int i = 0; i < docCount; i++) {
-      documents.add(MedicalDocument(
-        id: 'DOC_${random.nextInt(1000)}',
-        name: [
-          'Surat Keterangan Sehat',
-          'Hasil Pemeriksaan Lab',
-          'Resep Obat',
-          'Surat Rujukan',
-          'Hasil Rontgen'
-        ][random.nextInt(5)],
-        type: [
-          DocumentType.medicalCertificate,
-          DocumentType.labResult,
-          DocumentType.prescription,
-          DocumentType.referralLetter,
-          DocumentType.xrayResult
-        ][random.nextInt(5)],
-        url: 'https://example.com/document_${random.nextInt(1000)}.pdf',
-      ));
+    // Add prescriptions
+    for (final prescription in _prescriptions) {
+      allItems.add(MedicalHistoryItem.fromPrescription(prescription));
     }
 
-    return documents;
+    // Sort by date (newest first)
+    allItems.sort((a, b) => b.date.compareTo(a.date));
+
+    setState(() {
+      _allHistory = allItems;
+    });
+
+    print('📋 Combined ${allItems.length} history items');
   }
 
   @override
@@ -200,7 +179,7 @@ class _MedicalHistoryScreenState extends State<MedicalHistoryScreen>
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
-          'Riwayat Kunjungan',
+          'Riwayat Medis',
           style: TextStyle(
             color: Color(0xFF2C3E50),
             fontSize: 18,
@@ -214,8 +193,20 @@ class _MedicalHistoryScreenState extends State<MedicalHistoryScreen>
           ),
         ],
       ),
-      body: _isLoading ? _buildLoadingView() : _buildHistoryView(),
+      body: _buildBody(),
     );
+  }
+
+  Widget _buildBody() {
+    if (_isLoading) {
+      return _buildLoadingView();
+    }
+
+    if (_error != null) {
+      return _buildErrorView();
+    }
+
+    return _buildHistoryView();
   }
 
   Widget _buildLoadingView() {
@@ -228,11 +219,61 @@ class _MedicalHistoryScreenState extends State<MedicalHistoryScreen>
           ),
           SizedBox(height: 16),
           Text(
-            'Memuat riwayat kunjungan...',
+            'Memuat riwayat medis...',
             style: TextStyle(
               color: Color(0xFF7F8C8D),
               fontSize: 14,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorView() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              color: Colors.red[50],
+              borderRadius: BorderRadius.circular(40),
+            ),
+            child: Icon(
+              Icons.error_outline,
+              color: Colors.red[400],
+              size: 40,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Gagal memuat riwayat',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey[600],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _error ?? 'Terjadi kesalahan',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey[500],
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: _loadMedicalHistory,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2E7D89),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Coba Lagi'),
           ),
         ],
       ),
@@ -250,6 +291,7 @@ class _MedicalHistoryScreenState extends State<MedicalHistoryScreen>
         child: Column(
           children: [
             _buildFilterChips(),
+            _buildStatsRow(),
             Expanded(
               child: filteredHistory.isEmpty
                   ? _buildEmptyState()
@@ -259,8 +301,7 @@ class _MedicalHistoryScreenState extends State<MedicalHistoryScreen>
                       itemBuilder: (context, index) {
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 16),
-                          child:
-                              _buildMedicalRecordCard(filteredHistory[index]),
+                          child: _buildHistoryCard(filteredHistory[index]),
                         );
                       },
                     ),
@@ -272,7 +313,7 @@ class _MedicalHistoryScreenState extends State<MedicalHistoryScreen>
   }
 
   Widget _buildFilterChips() {
-    final filters = ['Semua', '2024', '2023', 'BPJS', 'Umum'];
+    final filters = ['Semua', 'Konsultasi', 'Antrean', 'Resep', 'Bulan Ini'];
 
     return Container(
       height: 60,
@@ -300,6 +341,7 @@ class _MedicalHistoryScreenState extends State<MedicalHistoryScreen>
                     ? const Color(0xFF2E7D89)
                     : const Color(0xFF7F8C8D),
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                fontSize: 12,
               ),
             ),
           );
@@ -308,9 +350,63 @@ class _MedicalHistoryScreenState extends State<MedicalHistoryScreen>
     );
   }
 
-  Widget _buildMedicalRecordCard(MedicalRecord record) {
+  Widget _buildStatsRow() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      child: Row(
+        children: [
+          _buildStatChip('Konsultasi', _consultations.length, Icons.chat, const Color(0xFF3498DB)),
+          const SizedBox(width: 8),
+          _buildStatChip('Antrean', _queues.length, Icons.queue, const Color(0xFF2ECC71)),
+          const SizedBox(width: 8),
+          _buildStatChip('Resep', _prescriptions.length, Icons.medication, const Color(0xFFF39C12)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatChip(String label, int count, IconData icon, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withOpacity(0.3)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 16, color: color),
+            const SizedBox(width: 6),
+            Text(
+              '$count',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: color,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHistoryCard(MedicalHistoryItem item) {
     return GestureDetector(
-      onTap: () => _showRecordDetail(record),
+      onTap: () => _showItemDetail(item),
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -333,13 +429,12 @@ class _MedicalHistoryScreenState extends State<MedicalHistoryScreen>
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color:
-                        _getSpecialtyColor(record.specialty).withOpacity(0.1),
+                    color: _getHistoryTypeColor(item.type).withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(
-                    _getSpecialtyIcon(record.specialty),
-                    color: _getSpecialtyColor(record.specialty),
+                    _getHistoryTypeIcon(item.type),
+                    color: _getHistoryTypeColor(item.type),
                     size: 20,
                   ),
                 ),
@@ -349,35 +444,37 @@ class _MedicalHistoryScreenState extends State<MedicalHistoryScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        record.doctorName,
+                        item.title,
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
                           color: Color(0xFF2C3E50),
                         ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                       Text(
-                        record.specialty,
+                        item.subtitle,
                         style: const TextStyle(
                           fontSize: 12,
                           color: Color(0xFF7F8C8D),
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
                 ),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: _getPaymentMethodColor(record.paymentMethod)
-                        .withOpacity(0.1),
+                    color: _getStatusColor(item.status).withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    _getPaymentMethodText(record.paymentMethod),
+                    item.status,
                     style: TextStyle(
-                      color: _getPaymentMethodColor(record.paymentMethod),
+                      color: _getStatusColor(item.status),
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
                     ),
@@ -386,56 +483,28 @@ class _MedicalHistoryScreenState extends State<MedicalHistoryScreen>
               ],
             ),
             const SizedBox(height: 12),
-            Text(
-              record.diagnosis,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF2C3E50),
-              ),
-            ),
-            const SizedBox(height: 8),
             Row(
               children: [
                 Icon(Icons.access_time, color: Colors.grey[600], size: 14),
                 const SizedBox(width: 6),
                 Text(
-                  _formatDate(record.visitDate),
+                  _formatDate(item.date),
                   style: const TextStyle(
                     fontSize: 12,
                     color: Color(0xFF7F8C8D),
                   ),
                 ),
-                const SizedBox(width: 16),
-                Icon(Icons.payments, color: Colors.grey[600], size: 14),
-                const SizedBox(width: 6),
+                const Spacer(),
                 Text(
-                  _formatCurrency(record.totalCost),
-                  style: const TextStyle(
-                    fontSize: 12,
+                  _getHistoryTypeLabel(item.type),
+                  style: TextStyle(
+                    fontSize: 11,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF27AE60),
+                    color: _getHistoryTypeColor(item.type),
                   ),
                 ),
               ],
             ),
-            if (record.documents.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Icon(Icons.description, color: Colors.grey[600], size: 14),
-                  const SizedBox(width: 6),
-                  Text(
-                    '${record.documents.length} dokumen tersedia',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFF3498DB),
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ],
-              ),
-            ],
           ],
         ),
       ),
@@ -462,7 +531,7 @@ class _MedicalHistoryScreenState extends State<MedicalHistoryScreen>
           ),
           const SizedBox(height: 16),
           Text(
-            'Belum ada riwayat kunjungan',
+            'Belum ada riwayat medis',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
@@ -471,18 +540,19 @@ class _MedicalHistoryScreenState extends State<MedicalHistoryScreen>
           ),
           const SizedBox(height: 8),
           Text(
-            'Riwayat kunjungan Anda akan muncul di sini',
+            'Riwayat konsultasi dan kunjungan Anda akan muncul di sini',
             style: TextStyle(
               fontSize: 12,
               color: Colors.grey[500],
             ),
+            textAlign: TextAlign.center,
           ),
         ],
       ),
     );
   }
 
-  void _showRecordDetail(MedicalRecord record) {
+  void _showItemDetail(MedicalHistoryItem item) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -510,76 +580,157 @@ class _MedicalHistoryScreenState extends State<MedicalHistoryScreen>
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Detail Kunjungan',
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF2C3E50),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    _buildDetailSection('Informasi Umum', [
-                      _buildDetailRow(
-                          'Tanggal Kunjungan', _formatDate(record.visitDate)),
-                      _buildDetailRow('Dokter', record.doctorName),
-                      _buildDetailRow('Spesialisasi', record.specialty),
-                      _buildDetailRow('Rumah Sakit', record.hospital),
-                      _buildDetailRow('Nomor Antrean', record.queueNumber),
-                    ]),
-                    _buildDetailSection('Diagnosis & Pengobatan', [
-                      _buildDetailRow('Diagnosis', record.diagnosis),
-                      _buildDetailRow('Pengobatan', record.treatment),
-                      _buildDetailRow('Catatan Dokter', record.notes),
-                    ]),
-                    if (record.prescription.isNotEmpty)
-                      _buildDetailSection(
-                          'Resep Obat',
-                          record.prescription
-                              .map((med) => _buildMedicationRow(med))
-                              .toList()),
-                    _buildDetailSection('Pembayaran', [
-                      _buildDetailRow(
-                          'Total Biaya', _formatCurrency(record.totalCost)),
-                      _buildDetailRow('Metode Pembayaran',
-                          _getPaymentMethodText(record.paymentMethod)),
-                      _buildDetailRow('Status',
-                          _getPaymentStatusText(record.paymentStatus)),
-                    ]),
-                    if (record.documents.isNotEmpty)
-                      _buildDocumentsSection(record.documents),
-                    const SizedBox(height: 24),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () => Navigator.pop(context),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF2E7D89),
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: const Text(
-                          'Tutup',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                child: _buildDetailContent(item),
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildDetailContent(MedicalHistoryItem item) {
+    switch (item.type) {
+      case HistoryType.consultation:
+        return _buildConsultationDetail(item.data['consultation'] as ConsultationHistory);
+      case HistoryType.queue:
+        return _buildQueueDetail(item.data['queue'] as QueueHistory);
+      case HistoryType.prescription:
+        return _buildPrescriptionDetail(item.data['prescription'] as PrescriptionHistory);
+      default:
+        return const Text('Detail tidak tersedia');
+    }
+  }
+
+  Widget _buildConsultationDetail(ConsultationHistory consultation) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Detail Konsultasi',
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF2C3E50),
+          ),
+        ),
+        const SizedBox(height: 20),
+        _buildDetailSection('Informasi Konsultasi', [
+          _buildDetailRow('Tanggal', _formatDate(consultation.date)),
+          _buildDetailRow('Jenis', consultation.type == 'AI' ? 'Konsultasi AI' : 'Konsultasi Dokter'),
+          _buildDetailRow('Dokter/AI', consultation.doctorName),
+          _buildDetailRow('Status', consultation.status),
+          if (consultation.fee != null)
+            _buildDetailRow('Biaya', _formatCurrency(consultation.fee!.toInt())),
+        ]),
+        _buildDetailSection('Ringkasan', [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.grey[200]!),
+            ),
+            child: Text(
+              consultation.summary,
+              style: const TextStyle(
+                fontSize: 13,
+                color: Color(0xFF2C3E50),
+                height: 1.4,
+              ),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 24),
+        _buildCloseButton(),
+      ],
+    );
+  }
+
+  Widget _buildQueueDetail(QueueHistory queue) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Detail Antrean',
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF2C3E50),
+          ),
+        ),
+        const SizedBox(height: 20),
+        _buildDetailSection('Informasi Antrean', [
+          _buildDetailRow('Tanggal', _formatDate(queue.date)),
+          _buildDetailRow('Nomor Antrean', queue.queueNumber),
+          _buildDetailRow('Dokter', queue.doctorName),
+          _buildDetailRow('Spesialisasi', queue.specialty),
+          _buildDetailRow('Status', queue.status),
+          if (queue.checkInTime != null)
+            _buildDetailRow('Waktu Check-in', _formatTime(queue.checkInTime!)),
+          if (queue.completedTime != null)
+            _buildDetailRow('Waktu Selesai', _formatTime(queue.completedTime!)),
+          if (queue.waitTime != null)
+            _buildDetailRow('Waktu Tunggu', '${queue.waitTime} menit'),
+        ]),
+        const SizedBox(height: 24),
+        _buildCloseButton(),
+      ],
+    );
+  }
+
+  Widget _buildPrescriptionDetail(PrescriptionHistory prescription) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Detail Resep',
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF2C3E50),
+          ),
+        ),
+        const SizedBox(height: 20),
+        _buildDetailSection('Informasi Resep', [
+          _buildDetailRow('Tanggal', _formatDate(prescription.date)),
+          _buildDetailRow('Kode Resep', prescription.prescriptionCode),
+          _buildDetailRow('Dokter', prescription.doctorName),
+          _buildDetailRow('Total Biaya', _formatCurrency(prescription.totalAmount.toInt())),
+          _buildDetailRow('Status Pengambilan', prescription.isDispensed ? 'Sudah Diambil' : 'Belum Diambil'),
+          if (prescription.dispensedAt != null)
+            _buildDetailRow('Waktu Pengambilan', _formatDate(prescription.dispensedAt!)),
+        ]),
+        _buildDetailSection('Daftar Obat', prescription.medications.map((med) => 
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.grey[200]!),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.medication, color: Colors.grey[600], size: 16),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    med,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFF2C3E50),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ).toList()),
+        const SizedBox(height: 24),
+        _buildCloseButton(),
+      ],
     );
   }
 
@@ -653,94 +804,26 @@ class _MedicalHistoryScreenState extends State<MedicalHistoryScreen>
     );
   }
 
-  Widget _buildMedicationRow(String medication) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey[200]!),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.medication, color: Colors.grey[600], size: 16),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              medication,
-              style: const TextStyle(
-                fontSize: 13,
-                color: Color(0xFF2C3E50),
-              ),
-            ),
+  Widget _buildCloseButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: () => Navigator.pop(context),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF2E7D89),
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDocumentsSection(List<MedicalDocument> documents) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Dokumen Medis',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF2C3E50),
-            ),
+        ),
+        child: const Text(
+          'Tutup',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
           ),
-          const SizedBox(height: 12),
-          ...documents.map((doc) => _buildDocumentCard(doc)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDocumentCard(MedicalDocument document) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey[200]!),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: const Color(0xFF3498DB).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Icon(
-              _getDocumentIcon(document.type),
-              color: const Color(0xFF3498DB),
-              size: 16,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              document.name,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF2C3E50),
-              ),
-            ),
-          ),
-          IconButton(
-            onPressed: () => _downloadDocument(document),
-            icon: const Icon(Icons.download, size: 18),
-            color: const Color(0xFF2E7D89),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -780,17 +863,37 @@ class _MedicalHistoryScreenState extends State<MedicalHistoryScreen>
                 ),
               ),
             ),
-            const ListTile(
-              leading: Icon(Icons.date_range, color: Color(0xFF3498DB)),
-              title: Text('Filter berdasarkan tanggal'),
+            ListTile(
+              leading: const Icon(Icons.all_inclusive, color: Color(0xFF7F8C8D)),
+              title: const Text('Semua Riwayat'),
+              onTap: () {
+                setState(() => _selectedFilter = 'Semua');
+                Navigator.pop(context);
+              },
             ),
-            const ListTile(
-              leading: Icon(Icons.local_hospital, color: Color(0xFF2ECC71)),
-              title: Text('Filter berdasarkan dokter'),
+            ListTile(
+              leading: const Icon(Icons.chat, color: Color(0xFF3498DB)),
+              title: const Text('Konsultasi'),
+              onTap: () {
+                setState(() => _selectedFilter = 'Konsultasi');
+                Navigator.pop(context);
+              },
             ),
-            const ListTile(
-              leading: Icon(Icons.payment, color: Color(0xFFF39C12)),
-              title: Text('Filter berdasarkan pembayaran'),
+            ListTile(
+              leading: const Icon(Icons.queue, color: Color(0xFF2ECC71)),
+              title: const Text('Antrean'),
+              onTap: () {
+                setState(() => _selectedFilter = 'Antrean');
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.medication, color: Color(0xFFF39C12)),
+              title: const Text('Resep'),
+              onTap: () {
+                setState(() => _selectedFilter = 'Resep');
+                Navigator.pop(context);
+              },
             ),
             const SizedBox(height: 20),
           ],
@@ -800,152 +903,90 @@ class _MedicalHistoryScreenState extends State<MedicalHistoryScreen>
   }
 
   Future<void> _refreshHistory() async {
-    setState(() => _isLoading = true);
-    await Future.delayed(const Duration(seconds: 1));
-    setState(() {
-      _medicalHistory = _generateMedicalHistory();
-      _isLoading = false;
-    });
+    await _loadMedicalHistory();
   }
 
-  List<MedicalRecord> _getFilteredHistory() {
-    if (_selectedFilter == 'Semua') return _medicalHistory;
+  List<MedicalHistoryItem> _getFilteredHistory() {
+    if (_selectedFilter == 'Semua') return _allHistory;
 
-    return _medicalHistory.where((record) {
+    return _allHistory.where((item) {
       switch (_selectedFilter) {
-        case '2024':
-          return record.visitDate.year == 2024;
-        case '2023':
-          return record.visitDate.year == 2023;
-        case 'BPJS':
-          return record.paymentMethod == PaymentMethod.bpjs;
-        case 'Umum':
-          return record.paymentMethod == PaymentMethod.cash;
+        case 'Konsultasi':
+          return item.type == HistoryType.consultation;
+        case 'Antrean':
+          return item.type == HistoryType.queue;
+        case 'Resep':
+          return item.type == HistoryType.prescription;
+        case 'Bulan Ini':
+          final now = DateTime.now();
+          return item.date.year == now.year && item.date.month == now.month;
         default:
           return true;
       }
     }).toList();
   }
 
-  void _downloadDocument(MedicalDocument document) {
-    _showSnackBar('Mengunduh ${document.name}...');
+  // Helper methods
+  Color _getHistoryTypeColor(HistoryType type) {
+    switch (type) {
+      case HistoryType.consultation:
+        return const Color(0xFF3498DB);
+      case HistoryType.queue:
+        return const Color(0xFF2ECC71);
+      case HistoryType.prescription:
+        return const Color(0xFFF39C12);
+      case HistoryType.medicalRecord:
+        return const Color(0xFF9B59B6);
+    }
   }
 
-  // Helper methods
-  Color _getSpecialtyColor(String specialty) {
-    switch (specialty) {
-      case 'Spesialis Jantung':
-        return const Color(0xFFE74C3C);
-      case 'Spesialis Mata':
-        return const Color(0xFF3498DB);
-      case 'Spesialis Penyakit Dalam':
+  IconData _getHistoryTypeIcon(HistoryType type) {
+    switch (type) {
+      case HistoryType.consultation:
+        return Icons.chat;
+      case HistoryType.queue:
+        return Icons.queue;
+      case HistoryType.prescription:
+        return Icons.medication;
+      case HistoryType.medicalRecord:
+        return Icons.medical_services;
+    }
+  }
+
+  String _getHistoryTypeLabel(HistoryType type) {
+    switch (type) {
+      case HistoryType.consultation:
+        return 'Konsultasi';
+      case HistoryType.queue:
+        return 'Antrean';
+      case HistoryType.prescription:
+        return 'Resep';
+      case HistoryType.medicalRecord:
+        return 'Rekam Medis';
+    }
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'selesai':
+      case 'lunas':
+      case 'sudah diambil':
         return const Color(0xFF2ECC71);
-      case 'Spesialis Kandungan':
-        return const Color(0xFF9B59B6);
-      case 'Spesialis Bedah':
-        return const Color(0xFFE67E22);
-      case 'Spesialis Anak':
+      case 'berlangsung':
+      case 'menunggu':
+      case 'pending':
         return const Color(0xFFF39C12);
+      case 'dibatalkan':
+      case 'gagal':
+        return const Color(0xFFE74C3C);
       default:
         return const Color(0xFF7F8C8D);
     }
   }
 
-  IconData _getSpecialtyIcon(String specialty) {
-    switch (specialty) {
-      case 'Spesialis Jantung':
-        return Icons.favorite;
-      case 'Spesialis Mata':
-        return Icons.visibility;
-      case 'Spesialis Penyakit Dalam':
-        return Icons.local_hospital;
-      case 'Spesialis Kandungan':
-        return Icons.pregnant_woman;
-      case 'Spesialis Bedah':
-        return Icons.healing;
-      case 'Spesialis Anak':
-        return Icons.child_care;
-      default:
-        return Icons.medical_services;
-    }
-  }
-
-  Color _getPaymentMethodColor(PaymentMethod method) {
-    switch (method) {
-      case PaymentMethod.bpjs:
-        return const Color(0xFF2ECC71);
-      case PaymentMethod.insurance:
-        return const Color(0xFF3498DB);
-      case PaymentMethod.creditCard:
-        return const Color(0xFF9B59B6);
-      default:
-        return const Color(0xFFF39C12);
-    }
-  }
-
-  String _getPaymentMethodText(PaymentMethod method) {
-    switch (method) {
-      case PaymentMethod.cash:
-        return 'Tunai';
-      case PaymentMethod.bpjs:
-        return 'BPJS';
-      case PaymentMethod.insurance:
-        return 'Asuransi';
-      case PaymentMethod.creditCard:
-        return 'Kartu Kredit';
-    }
-  }
-
-  String _getPaymentStatusText(PaymentStatus status) {
-    switch (status) {
-      case PaymentStatus.paid:
-        return 'Lunas';
-      case PaymentStatus.pending:
-        return 'Menunggu';
-      case PaymentStatus.failed:
-        return 'Gagal';
-    }
-  }
-
-  IconData _getDocumentIcon(DocumentType type) {
-    switch (type) {
-      case DocumentType.medicalCertificate:
-        return Icons.assignment;
-      case DocumentType.labResult:
-        return Icons.science;
-      case DocumentType.prescription:
-        return Icons.medication;
-      case DocumentType.referralLetter:
-        return Icons.send;
-      case DocumentType.xrayResult:
-        return Icons.local_hospital;
-    }
-  }
-
   String _formatDate(DateTime date) {
-    final days = [
-      'Minggu',
-      'Senin',
-      'Selasa',
-      'Rabu',
-      'Kamis',
-      'Jumat',
-      'Sabtu'
-    ];
-    final months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'Mei',
-      'Jun',
-      'Jul',
-      'Agu',
-      'Sep',
-      'Okt',
-      'Nov',
-      'Des'
-    ];
+    final days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 
     final day = days[date.weekday % 7];
     final dayNum = date.day;
@@ -955,24 +996,14 @@ class _MedicalHistoryScreenState extends State<MedicalHistoryScreen>
     return '$day, $dayNum $month $year';
   }
 
+  String _formatTime(DateTime time) {
+    return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+  }
+
   String _formatCurrency(int amount) {
     return 'Rp ${amount.toString().replaceAllMapped(
           RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
           (Match m) => '${m[1]}.',
         )}';
-  }
-
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: const Color(0xFF2E7D89),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        margin: const EdgeInsets.all(16),
-      ),
-    );
   }
 }
