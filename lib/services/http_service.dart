@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class HttpService {
   // Ngrok URL - Ganti dengan URL ngrok kamu
-  static const String _baseUrl = 'https://5b64b31db9f9.ngrok-free.app';
+  static const String _baseUrl = 'https://a32f3308381b.ngrok-free.app';
   static const Duration _timeout = Duration(seconds: 30);
 
   static Map<String, String> get _headers => {

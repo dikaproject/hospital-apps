@@ -145,7 +145,7 @@ class AuthService {
         }
       }
 
-      return null; // User cancelled
+      return null; 
     } on PlatformException catch (e) {
       if (e.code == 'UserCancel') {
         return null;
