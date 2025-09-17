@@ -184,6 +184,9 @@ class DoctorInfo {
   final double? rating;
   final String? experience;
   final String? photoUrl;
+  final double consultationFee;
+  final bool isAvailable;
+  final String? description;
 
   DoctorInfo({
     this.id = '',
@@ -193,18 +196,64 @@ class DoctorInfo {
     this.rating,
     this.experience,
     this.photoUrl,
+    this.consultationFee = 25000.0,
+    this.isAvailable = true,
+    this.description,
   });
 
   factory DoctorInfo.fromJson(Map<String, dynamic> json) {
+    // Safe fee parsing
+    double parsedFee = 25000.0;
+
+    final feeValue = json['consultationFee'];
+    if (feeValue != null) {
+      if (feeValue is num) {
+        parsedFee = feeValue.toDouble();
+      } else if (feeValue is String) {
+        try {
+          parsedFee = double.parse(feeValue);
+        } catch (e) {
+          print('⚠️ Error parsing fee string: $feeValue');
+        }
+      }
+    }
+
+    if (parsedFee <= 0) {
+      parsedFee = 25000.0;
+    }
+
     return DoctorInfo(
-      id: json['id'] ?? '',
-      name: json['name'] ?? '',
-      specialty: json['specialty'] ?? '',
-      hospital: json['hospital'],
-      rating: (json['rating'] ?? 0.0).toDouble(),
-      experience: json['experience'],
-      photoUrl: json['photoUrl'],
+      id: json['id']?.toString() ?? '',
+      name: json['name']?.toString() ?? '',
+      specialty: json['specialty']?.toString() ?? '',
+      hospital: json['hospital']?.toString(),
+      rating: (json['rating'] is num) ? (json['rating'] as num).toDouble() : null,
+      experience: json['experience']?.toString(),
+      photoUrl: json['photoUrl']?.toString(),
+      consultationFee: parsedFee,
+      isAvailable: json['isAvailable'] == true,
+      description: json['description']?.toString(),
     );
+  }
+
+  // Fix: Use getter instead of computed property
+  String get formattedFee {
+    return 'Rp ${consultationFee.toStringAsFixed(0).replaceAllMapped(
+          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+          (Match m) => '${m[1]}.',
+        )}';
+  }
+
+  String get specialtyDisplay {
+    if (specialty.toLowerCase().contains('umum')) {
+      return 'Dokter Umum';
+    }
+    return specialty;
+  }
+
+  bool get isGeneralPractitioner {
+    return specialty.toLowerCase().contains('umum') ||
+        specialty.toLowerCase() == 'general practitioner';
   }
 }
 
@@ -506,22 +555,22 @@ class AIScreeningResult {
         recommendation: json['recommendation']?.toString(),
         message: json['message']?.toString() ?? 'Hasil analisis tersedia',
         needsDoctorConsultation: json['needsDoctorConsultation'] == true,
-        estimatedFee: (json['estimatedFee'] is num) 
-            ? (json['estimatedFee'] as num).toDouble() 
+        estimatedFee: (json['estimatedFee'] is num)
+            ? (json['estimatedFee'] as num).toDouble()
             : 0.0,
-        confidence: (json['confidence'] is num) 
-            ? (json['confidence'] as num).toDouble() 
+        confidence: (json['confidence'] is num)
+            ? (json['confidence'] as num).toDouble()
             : 0.7,
         type: json['type']?.toString() ?? 'FINAL_DIAGNOSIS',
         question: json['question']?.toString(),
-        questionNumber: json['questionNumber'] is num 
-            ? (json['questionNumber'] as num).toInt() 
+        questionNumber: json['questionNumber'] is num
+            ? (json['questionNumber'] as num).toInt()
             : null,
-        totalQuestions: json['totalQuestions'] is num 
-            ? (json['totalQuestions'] as num).toInt() 
+        totalQuestions: json['totalQuestions'] is num
+            ? (json['totalQuestions'] as num).toInt()
             : null,
-        progress: json['progress'] is Map<String, dynamic> 
-            ? json['progress'] as Map<String, dynamic> 
+        progress: json['progress'] is Map<String, dynamic>
+            ? json['progress'] as Map<String, dynamic>
             : null,
         primaryDiagnosis: json['primaryDiagnosis']?.toString(),
         possibleConditions: json['possibleConditions'] is List
@@ -679,6 +728,47 @@ class ConsultationHistoryItem {
           DateTime.parse(json['createdAt'] ?? DateTime.now().toIso8601String()),
       doctor:
           json['doctor'] != null ? DoctorInfo.fromJson(json['doctor']) : null,
+    );
+  }
+}
+
+// NEW: Direct consultation result
+class DirectConsultationResult {
+  final String consultationId;
+  final DoctorInfo doctor;
+  final double consultationFee;
+  final String queueNumber;
+  final int position;
+  final int estimatedWaitMinutes;
+  final String status;
+  final DateTime scheduledTime;
+
+  DirectConsultationResult({
+    required this.consultationId,
+    required this.doctor,
+    required this.consultationFee,
+    required this.queueNumber,
+    required this.position,
+    required this.estimatedWaitMinutes,
+    required this.status,
+    required this.scheduledTime,
+  });
+
+  factory DirectConsultationResult.fromJson(Map<String, dynamic> json) {
+    return DirectConsultationResult(
+      consultationId: json['consultationId']?.toString() ?? '',
+      doctor: DoctorInfo.fromJson(json['doctor'] ?? {}),
+      consultationFee: (json['consultationFee'] is num)
+          ? (json['consultationFee'] as num).toDouble()
+          : 0.0,
+      queueNumber: json['queueNumber']?.toString() ?? '',
+      position: json['position'] is num ? (json['position'] as num).toInt() : 0,
+      estimatedWaitMinutes: json['estimatedWaitMinutes'] is num
+          ? (json['estimatedWaitMinutes'] as num).toInt()
+          : 15,
+      status: json['status']?.toString() ?? 'WAITING',
+      scheduledTime: DateTime.parse(
+          json['scheduledTime'] ?? DateTime.now().toIso8601String()),
     );
   }
 }

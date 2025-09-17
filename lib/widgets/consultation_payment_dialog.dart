@@ -1,24 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
-import '../models/prescription_models.dart';
+import '../models/consultation_models.dart';
 import '../services/transaction_service.dart';
+import '../models/transaction_models.dart';
 import 'dart:convert';
 
-class PaymentDialog extends StatefulWidget {
-  final DigitalPrescription prescription;
+class ConsultationPaymentDialog extends StatefulWidget {
+  final DirectConsultationResult consultation;
   final VoidCallback onPaymentSuccess;
 
-  const PaymentDialog({
+  const ConsultationPaymentDialog({
     super.key,
-    required this.prescription,
+    required this.consultation,
     required this.onPaymentSuccess,
   });
 
   @override
-  State<PaymentDialog> createState() => _PaymentDialogState();
+  State<ConsultationPaymentDialog> createState() =>
+      _ConsultationPaymentDialogState();
 }
 
-class _PaymentDialogState extends State<PaymentDialog> {
+class _ConsultationPaymentDialogState extends State<ConsultationPaymentDialog> {
   PaymentMethod _selectedMethod = PaymentMethod.CREDIT_CARD;
   bool _isProcessing = false;
   bool _useOnlinePayment = true;
@@ -30,7 +32,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
         borderRadius: BorderRadius.circular(20),
       ),
       title: const Text(
-        'Pilih Metode Pembayaran',
+        'Bayar Konsultasi',
         style: TextStyle(
           fontSize: 18,
           fontWeight: FontWeight.bold,
@@ -41,18 +43,18 @@ class _PaymentDialogState extends State<PaymentDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Prescription Info
+            // Consultation Info
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+                  colors: [Color(0xFF2E7D89), Color(0xFF1ABC9C)],
                 ),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.receipt_rounded,
+                  const Icon(Icons.medical_services,
                       color: Colors.white, size: 24),
                   const SizedBox(width: 12),
                   Expanded(
@@ -60,7 +62,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          widget.prescription.prescriptionCode,
+                          'Konsultasi ${widget.consultation.doctor.name}',
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 16,
@@ -68,7 +70,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
                           ),
                         ),
                         Text(
-                          'Total: ${widget.prescription.formattedTotalAmount}',
+                          'Biaya: ${widget.consultation.doctor.formattedFee}',
                           style: const TextStyle(
                             color: Colors.white70,
                             fontSize: 14,
@@ -83,7 +85,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
 
             const SizedBox(height: 20),
 
-            // ✅ NEW: Payment Type Selection
+            // Payment Type Selection
             Container(
               decoration: BoxDecoration(
                 border: Border.all(color: Colors.grey.shade300),
@@ -103,7 +105,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
                       style: const TextStyle(fontSize: 12),
                     ),
                     value: _useOnlinePayment,
-                    activeColor: const Color(0xFF667EEA),
+                    activeColor: const Color(0xFF2E7D89),
                     onChanged: (value) {
                       setState(() {
                         _useOnlinePayment = value;
@@ -116,7 +118,6 @@ class _PaymentDialogState extends State<PaymentDialog> {
 
             const SizedBox(height: 16),
 
-            // ✅ Show different options based on payment type
             if (!_useOnlinePayment)
               _buildManualPaymentOptions()
             else
@@ -135,7 +136,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
         ElevatedButton(
           onPressed: _isProcessing ? null : _processPayment,
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF667EEA),
+            backgroundColor: const Color(0xFF2E7D89),
             foregroundColor: Colors.white,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
@@ -174,7 +175,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
             decoration: BoxDecoration(
               border: Border.all(
                 color: _selectedMethod == method
-                    ? const Color(0xFF667EEA)
+                    ? const Color(0xFF2E7D89)
                     : Colors.grey.shade300,
                 width: 2,
               ),
@@ -186,7 +187,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
                   Icon(
                     _getMethodIcon(method),
                     color: _selectedMethod == method
-                        ? const Color(0xFF667EEA)
+                        ? const Color(0xFF2E7D89)
                         : Colors.grey,
                     size: 20,
                   ),
@@ -206,7 +207,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
               ),
               value: method,
               groupValue: _selectedMethod,
-              activeColor: const Color(0xFF667EEA),
+              activeColor: const Color(0xFF2E7D89),
               onChanged: (value) {
                 setState(() {
                   _selectedMethod = value!;
@@ -231,7 +232,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
         children: [
           const Icon(
             Icons.payment_rounded,
-            color: Color(0xFF667EEA),
+            color: Color(0xFF2E7D89),
             size: 48,
           ),
           const SizedBox(height: 12),
@@ -245,7 +246,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Anda akan diarahkan ke halaman pembayaran yang aman untuk memilih metode pembayaran:',
+            'Anda akan diarahkan ke halaman pembayaran yang aman:',
             style: TextStyle(
               fontSize: 14,
               color: Color(0xFF7F8C8D),
@@ -273,21 +274,20 @@ class _PaymentDialogState extends State<PaymentDialog> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: const Color(0xFF667EEA).withOpacity(0.1),
+        color: const Color(0xFF2E7D89).withOpacity(0.1),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
         label,
         style: const TextStyle(
           fontSize: 12,
-          color: Color(0xFF667EEA),
+          color: Color(0xFF2E7D89),
           fontWeight: FontWeight.w600,
         ),
       ),
     );
   }
 
-  // ✅ ENHANCED: Process payment with Midtrans support
   Future<void> _processPayment() async {
     setState(() {
       _isProcessing = true;
@@ -295,23 +295,21 @@ class _PaymentDialogState extends State<PaymentDialog> {
 
     try {
       if (_useOnlinePayment) {
-        // ✅ NEW: Use Midtrans Snap for online payment
-        final result = await TransactionService.createMidtransPayment(
-          prescriptionId: widget.prescription.id,
+        final result =
+            await TransactionService.createMidtransConsultationPayment(
+          consultationId: widget.consultation.consultationId,
         );
 
         if (result != null && result.snapToken != null) {
           Navigator.pop(context);
-
-          // Show Midtrans payment page
-          _showMidtransPayment(result.snapToken!, result.orderId!);
+          _showMidtransWebView(result.snapToken!, result.orderId!);
         } else {
           _showError('Gagal membuat pembayaran online');
         }
       } else {
-        // ✅ EXISTING: Direct payment for manual methods
-        final success = await TransactionService.payPrescription(
-          prescriptionId: widget.prescription.id,
+        // Fix: Use the renamed method
+        final success = await TransactionService.payConsultationDirect(
+          consultationId: widget.consultation.consultationId,
           paymentMethod: _selectedMethod.name,
         );
 
@@ -334,11 +332,12 @@ class _PaymentDialogState extends State<PaymentDialog> {
     }
   }
 
-  void _showMidtransPayment(String snapToken, String orderId) {
+  // Create custom Midtrans WebView for consultation
+  void _showMidtransWebView(String snapToken, String orderId) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => MidtransPaymentScreen(
+        builder: (context) => ConsultationMidtransPaymentScreen(
           snapToken: snapToken,
           orderId: orderId,
           onPaymentSuccess: () {
@@ -353,7 +352,6 @@ class _PaymentDialogState extends State<PaymentDialog> {
     );
   }
 
-  // Existing helper methods...
   IconData _getMethodIcon(PaymentMethod method) {
     switch (method) {
       case PaymentMethod.CASH:
@@ -362,14 +360,8 @@ class _PaymentDialogState extends State<PaymentDialog> {
         return Icons.health_and_safety_rounded;
       case PaymentMethod.INSURANCE:
         return Icons.shield_rounded;
-      case PaymentMethod.CREDIT_CARD:
-        return Icons.credit_card_rounded;
-      case PaymentMethod.DEBIT_CARD:
-        return Icons.credit_card_outlined;
-      case PaymentMethod.BANK_TRANSFER:
-        return Icons.account_balance_rounded;
-      case PaymentMethod.E_WALLET:
-        return Icons.account_balance_wallet_rounded;
+      default:
+        return Icons.payment;
     }
   }
 
@@ -381,14 +373,8 @@ class _PaymentDialogState extends State<PaymentDialog> {
         return 'BPJS Kesehatan';
       case PaymentMethod.INSURANCE:
         return 'Asuransi Kesehatan';
-      case PaymentMethod.CREDIT_CARD:
-        return 'Kartu Kredit';
-      case PaymentMethod.DEBIT_CARD:
-        return 'Kartu Debit';
-      case PaymentMethod.BANK_TRANSFER:
-        return 'Transfer Bank';
-      case PaymentMethod.E_WALLET:
-        return 'E-Wallet';
+      default:
+        return 'Unknown';
     }
   }
 
@@ -413,7 +399,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
                     ),
                   ),
                   Text(
-                    'Resep ${widget.prescription.prescriptionCode} sedang diproses',
+                    'Konsultasi dengan ${widget.consultation.doctor.name} siap dimulai',
                     style: const TextStyle(fontSize: 14),
                   ),
                 ],
@@ -461,14 +447,14 @@ class _PaymentDialogState extends State<PaymentDialog> {
   }
 }
 
-// ✅ NEW: Midtrans Payment WebView Screen
-class MidtransPaymentScreen extends StatefulWidget {
+// Custom Midtrans Payment Screen for Consultation
+class ConsultationMidtransPaymentScreen extends StatefulWidget {
   final String snapToken;
   final String orderId;
   final VoidCallback onPaymentSuccess;
   final Function(String) onPaymentFailure;
 
-  const MidtransPaymentScreen({
+  const ConsultationMidtransPaymentScreen({
     super.key,
     required this.snapToken,
     required this.orderId,
@@ -477,24 +463,29 @@ class MidtransPaymentScreen extends StatefulWidget {
   });
 
   @override
-  State<MidtransPaymentScreen> createState() => _MidtransPaymentScreenState();
+  State<ConsultationMidtransPaymentScreen> createState() =>
+      _ConsultationMidtransPaymentScreenState();
 }
 
-class _MidtransPaymentScreenState extends State<MidtransPaymentScreen> {
+class _ConsultationMidtransPaymentScreenState
+    extends State<ConsultationMidtransPaymentScreen> {
   late WebViewController _controller;
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _initializeWebView();
-  }
-
-  void _initializeWebView() {
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(
         NavigationDelegate(
+          onProgress: (int progress) {
+            if (progress == 100) {
+              setState(() {
+                _isLoading = false;
+              });
+            }
+          },
           onPageStarted: (String url) {
             setState(() {
               _isLoading = true;
@@ -505,14 +496,18 @@ class _MidtransPaymentScreenState extends State<MidtransPaymentScreen> {
               _isLoading = false;
             });
 
-            // Check for success/failure URLs
-            if (url.contains('success') || url.contains('settlement')) {
+            // Check for payment completion URLs
+            if (url.contains('finish') || url.contains('success')) {
               widget.onPaymentSuccess();
               Navigator.pop(context);
-            } else if (url.contains('error') || url.contains('failure')) {
-              widget.onPaymentFailure('Payment failed');
+            } else if (url.contains('error') || url.contains('cancel')) {
+              widget.onPaymentFailure('Payment cancelled or failed');
               Navigator.pop(context);
             }
+          },
+          onWebResourceError: (WebResourceError error) {
+            widget.onPaymentFailure('Network error: ${error.description}');
+            Navigator.pop(context);
           },
         ),
       )
@@ -523,25 +518,51 @@ class _MidtransPaymentScreenState extends State<MidtransPaymentScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text('Pembayaran'),
-        backgroundColor: const Color(0xFF667EEA),
-        foregroundColor: Colors.white,
+        elevation: 0,
+        backgroundColor: Colors.white,
         leading: IconButton(
-          icon: const Icon(Icons.close),
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF2E7D89)),
           onPressed: () {
-            widget.onPaymentFailure('Payment cancelled');
             Navigator.pop(context);
+            widget.onPaymentFailure('Payment cancelled by user');
           },
         ),
+        title: const Text(
+          'Pembayaran Konsultasi',
+          style: TextStyle(
+            color: Color(0xFF2C3E50),
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        centerTitle: true,
       ),
       body: Stack(
         children: [
           WebViewWidget(controller: _controller),
           if (_isLoading)
-            const Center(
-              child: CircularProgressIndicator(
-                color: Color(0xFF667EEA),
+            Container(
+              color: Colors.white,
+              child: const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(
+                      valueColor:
+                          AlwaysStoppedAnimation<Color>(Color(0xFF2E7D89)),
+                    ),
+                    SizedBox(height: 16),
+                    Text(
+                      'Memuat halaman pembayaran...',
+                      style: TextStyle(
+                        color: Color(0xFF7F8C8D),
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
         ],

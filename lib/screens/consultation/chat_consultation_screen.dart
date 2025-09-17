@@ -51,15 +51,30 @@ class _ChatConsultationScreenState extends State<ChatConsultationScreen>
     try {
       final messages =
           await ChatConsultationService.getChatMessages(widget.consultation.id);
+
       setState(() {
         _messages = messages;
         _isLoading = false;
       });
+
       _animationController.forward();
+
+      // Add initial message if no messages exist
+      if (_messages.isEmpty) {
+        _sendInitialMessage();
+      }
+
       _scrollToBottom();
     } catch (e) {
       setState(() => _isLoading = false);
-      _showErrorSnackBar('Gagal memuat chat: $e');
+
+      // Don't show error for authorization issues - just show empty state
+      if (e.toString().contains('Not authorized')) {
+        print('🔒 Chat access restricted, showing fallback');
+        _sendInitialMessage();
+      } else {
+        _showErrorSnackBar('Gagal memuat chat: $e');
+      }
     }
   }
 
@@ -74,7 +89,7 @@ class _ChatConsultationScreenState extends State<ChatConsultationScreen>
       );
 
       setState(() {
-        _messages.add(initialMessage);
+        _messages = [initialMessage];
       });
     }
   }

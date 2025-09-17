@@ -4,7 +4,20 @@ import '../models/consultation_models.dart';
 import 'http_service.dart';
 import 'auth_service.dart';
 
+// Update ChatConsultationService
 class ChatConsultationService {
+  static Map<String, dynamic> _parseResponse(dynamic response) {
+    try {
+      if (response.body != null && response.body.isNotEmpty) {
+        return json.decode(response.body);
+      }
+      return {'success': false, 'message': 'Empty response'};
+    } catch (e) {
+      print('❌ Error parsing response: $e');
+      return {'success': false, 'message': 'Invalid JSON response'};
+    }
+  }
+
   // Get available time slots
   static Future<List<TimeSlot>> getAvailableTimeSlots({
     String? doctorId,
@@ -22,7 +35,8 @@ class ChatConsultationService {
         queryParams['date'] = preferredDate.toIso8601String().split('T')[0];
       }
 
-      final uri = Uri.parse('${HttpService.getCurrentBaseUrl()}/api/consultations/available-slots')
+      final uri = Uri.parse(
+              '${HttpService.getCurrentBaseUrl()}/api/consultations/available-slots')
           .replace(queryParameters: queryParams);
 
       final response = await HttpService.get(
@@ -30,19 +44,15 @@ class ChatConsultationService {
         token: AuthService.getCurrentToken(),
       );
 
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
-        
-        if (data['success'] == true) {
-          final slots = (data['data']['slots'] as List? ?? [])
-              .map((slot) => TimeSlot.fromJson(slot))
-              .toList();
-          return slots;
-        } else {
-          throw Exception(data['message'] ?? 'Failed to get available slots');
-        }
+      final data = _parseResponse(response);
+
+      if (data['success'] == true) {
+        final slots = (data['data']['slots'] as List? ?? [])
+            .map((slot) => TimeSlot.fromJson(slot))
+            .toList();
+        return slots;
       } else {
-        throw Exception('HTTP ${response.statusCode}: Failed to get available slots');
+        throw Exception(data['message'] ?? 'Failed to get available slots');
       }
     } catch (e) {
       print('❌ Get available slots error: $e');
@@ -73,17 +83,12 @@ class ChatConsultationService {
         token: AuthService.getCurrentToken(),
       );
 
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
-        
-        if (data['success'] == true) {
-          return ChatConsultation.fromJson(data['data']['consultation']);
-        } else {
-          throw Exception(data['message'] ?? 'Failed to book consultation');
-        }
+      final data = _parseResponse(response);
+
+      if (data['success'] == true) {
+        return ChatConsultation.fromJson(data['data']['consultation']);
       } else {
-        final errorData = json.decode(response.body);
-        throw Exception(errorData['message'] ?? 'Failed to book consultation');
+        throw Exception(data['message'] ?? 'Failed to book consultation');
       }
     } catch (e) {
       print('❌ Book chat consultation error: $e');
@@ -91,47 +96,159 @@ class ChatConsultationService {
     }
   }
 
-  // Get user's chat consultations
-  static Future<List<ChatConsultation>> getChatConsultations() async {
-    try {
-      final userId = AuthService.getCurrentUser()?.id;
-      if (userId == null) {
-        throw Exception('User not authenticated');
-      }
+  // Fix status mapping
+  static ConsultationStatus _mapStringToStatus(String? status) {
+    if (status == null) return ConsultationStatus.waiting;
 
-      final response = await HttpService.get(
-        '/api/consultations/chat-consultations/$userId',
-        token: AuthService.getCurrentToken(),
-      );
-
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
-        
-        if (data['success'] == true) {
-          final consultations = (data['data']['consultations'] as List? ?? [])
-              .map((consultation) => ChatConsultation.fromJson(consultation))
-              .toList();
-          return consultations;
-        } else {
-          throw Exception(data['message'] ?? 'Failed to get consultations');
-        }
-      } else {
-        throw Exception('HTTP ${response.statusCode}: Failed to get consultations');
-      }
-    } catch (e) {
-      print('❌ Get chat consultations error: $e');
-      throw Exception('Failed to get consultations: $e');
+    switch (status.toUpperCase()) {
+      case 'WAITING':
+      case 'PENDING':
+        return ConsultationStatus.waiting;
+      case 'IN_PROGRESS':
+      case 'ACTIVE':
+      case 'PAID':
+        return ConsultationStatus.inProgress;
+      case 'COMPLETED':
+      case 'FINISHED':
+        return ConsultationStatus.completed;
+      case 'CANCELLED':
+      case 'CANCELED':
+        return ConsultationStatus.cancelled;
+      default:
+        return ConsultationStatus.waiting;
     }
   }
 
-  // Send chat message - FIXED: Use ChatConsultationMessage
+  // Fix: Better error handling for consultations list
+  static Future<List<ChatConsultation>> getChatConsultations() async {
+  try {
+    print('📱 Getting chat consultations...');
+
+    // Fix: Use correct endpoint
+    final response = await HttpService.get(
+      '/api/consultations/chat', // Changed from '/api/mobile/consultations/chat'
+      token: AuthService.getCurrentToken(),
+    );
+
+    print('📥 Chat consultations response: ${response.statusCode}');
+
+    final data = _parseResponse(response);
+
+    if (data['success'] == true) {
+      final consultationsList = data['data']['consultations'] as List? ?? [];
+
+      return consultationsList.map((item) {
+        try {
+          final consultation = item as Map<String, dynamic>;
+          final isPaid = consultation['isPaid'] == true;
+          final paymentStatus = consultation['paymentStatus']?.toString();
+
+          // Fix: Check if consultation is really completed
+          String status = consultation['status']?.toString() ?? 'WAITING';
+          final isCompleted = consultation['isCompleted'] == true;
+          
+          if (isPaid && paymentStatus == 'PAID' && !isCompleted) {
+            status = 'IN_PROGRESS'; // Only if not completed
+          } else if (isCompleted) {
+            status = 'COMPLETED';
+          }
+
+          return ChatConsultation(
+            id: consultation['id']?.toString() ?? '',
+            doctorName: consultation['doctorName']?.toString() ?? 'Unknown Doctor',
+            specialty: consultation['specialty']?.toString() ?? 'General',
+            scheduledTime: DateTime.tryParse(consultation['scheduledTime']?.toString() ?? '') ?? DateTime.now(),
+            status: _mapStringToStatus(status),
+            queuePosition: (consultation['queuePosition'] is num) 
+                ? (consultation['queuePosition'] as num).toInt() 
+                : 1,
+            estimatedWaitMinutes: (consultation['estimatedWaitMinutes'] is num)
+                ? (consultation['estimatedWaitMinutes'] as num).toInt()
+                : 30,
+            messages: _parseMessages(consultation['messages']),
+            hasUnreadMessages: consultation['hasUnreadMessages'] == true,
+            lastMessageTime: consultation['lastMessageTime'] != null
+                ? DateTime.tryParse(consultation['lastMessageTime'])
+                : null,
+          );
+        } catch (e) {
+          print('Error parsing consultation item: $e');
+          return null;
+        }
+      }).where((item) => item != null).cast<ChatConsultation>().toList();
+    }
+
+    return [];
+  } catch (e) {
+    print('❌ Error getting chat consultations: $e');
+    return [];
+  }
+}
+
+  static List<ChatConsultationMessage> _parseMessages(dynamic messagesData) {
+  try {
+    final messagesList = messagesData as List? ?? [];
+    return messagesList
+        .map((msg) => ChatConsultationMessage.fromJson(msg))
+        .toList();
+  } catch (e) {
+    print('Error parsing messages: $e');
+    return [];
+  }
+}
+
+  static Future<List<ChatConsultationMessage>> getChatMessages(
+      String consultationId) async {
+    try {
+      print('📱 Getting chat messages for: $consultationId');
+
+      final response = await HttpService.get(
+        '/api/mobile/consultations/chat-messages/$consultationId',
+        token: AuthService.getCurrentToken(),
+      );
+
+      print('📥 Chat messages response: ${response.statusCode}');
+
+      final data = _parseResponse(response);
+
+      if (data['success'] == true) {
+        final messages = (data['data']['messages'] as List? ?? [])
+            .map((message) => ChatConsultationMessage.fromJson(message))
+            .toList();
+        print('✅ Retrieved ${messages.length} messages');
+        return messages;
+      } else {
+        print('⚠️ API returned error: ${data['message']}');
+
+        // If unauthorized, return empty list instead of throwing
+        if (response.statusCode == 403) {
+          print('🔒 Authorization failed, returning empty messages');
+          return [];
+        }
+
+        throw Exception(data['message'] ?? 'Failed to get messages');
+      }
+    } catch (e) {
+      print('❌ Get chat messages error: $e');
+
+      // Return empty list for authorization errors
+      if (e.toString().contains('Not authorized')) {
+        print('🔒 Returning empty messages due to authorization');
+        return [];
+      }
+
+      throw Exception('Failed to get messages: $e');
+    }
+  }
+
+  // Add send message with better error handling
   static Future<ChatConsultationMessage> sendChatMessage({
     required String consultationId,
     required String message,
   }) async {
     try {
       final response = await HttpService.post(
-        '/api/consultations/send-message',
+        '/api/mobile/consultations/send-message',
         {
           'consultationId': consultationId,
           'message': message,
@@ -139,17 +256,12 @@ class ChatConsultationService {
         token: AuthService.getCurrentToken(),
       );
 
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
-        
-        if (data['success'] == true) {
-          return ChatConsultationMessage.fromJson(data['data']['message']);
-        } else {
-          throw Exception(data['message'] ?? 'Failed to send message');
-        }
+      final data = _parseResponse(response);
+
+      if (data['success'] == true) {
+        return ChatConsultationMessage.fromJson(data['data']['message']);
       } else {
-        final errorData = json.decode(response.body);
-        throw Exception(errorData['message'] ?? 'Failed to send message');
+        throw Exception(data['message'] ?? 'Failed to send message');
       }
     } catch (e) {
       print('❌ Send chat message error: $e');
@@ -157,35 +269,7 @@ class ChatConsultationService {
     }
   }
 
-  // Get chat messages for consultation - FIXED: Use ChatConsultationMessage
-  static Future<List<ChatConsultationMessage>> getChatMessages(String consultationId) async {
-    try {
-      final response = await HttpService.get(
-        '/api/consultations/chat-messages/$consultationId',
-        token: AuthService.getCurrentToken(),
-      );
-
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
-        
-        if (data['success'] == true) {
-          final messages = (data['data']['messages'] as List? ?? [])
-              .map((message) => ChatConsultationMessage.fromJson(message))
-              .toList();
-          return messages;
-        } else {
-          throw Exception(data['message'] ?? 'Failed to get messages');
-        }
-      } else {
-        throw Exception('HTTP ${response.statusCode}: Failed to get messages');
-      }
-    } catch (e) {
-      print('❌ Get chat messages error: $e');
-      throw Exception('Failed to get messages: $e');
-    }
-  }
-
-  // Accept early consultation (when notified slot is available early)
+  // Accept early consultation
   static Future<void> acceptEarlyConsultation(String consultationId) async {
     try {
       final response = await HttpService.post(
@@ -196,15 +280,11 @@ class ChatConsultationService {
         token: AuthService.getCurrentToken(),
       );
 
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
-        
-        if (data['success'] != true) {
-          throw Exception(data['message'] ?? 'Failed to accept early consultation');
-        }
-      } else {
-        final errorData = json.decode(response.body);
-        throw Exception(errorData['message'] ?? 'Failed to accept early consultation');
+      final data = _parseResponse(response);
+
+      if (data['success'] != true) {
+        throw Exception(
+            data['message'] ?? 'Failed to accept early consultation');
       }
     } catch (e) {
       print('❌ Accept early consultation error: $e');
@@ -223,15 +303,10 @@ class ChatConsultationService {
         token: AuthService.getCurrentToken(),
       );
 
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
-        
-        if (data['success'] != true) {
-          throw Exception(data['message'] ?? 'Failed to cancel consultation');
-        }
-      } else {
-        final errorData = json.decode(response.body);
-        throw Exception(errorData['message'] ?? 'Failed to cancel consultation');
+      final data = _parseResponse(response);
+
+      if (data['success'] != true) {
+        throw Exception(data['message'] ?? 'Failed to cancel consultation');
       }
     } catch (e) {
       print('❌ Cancel consultation error: $e');

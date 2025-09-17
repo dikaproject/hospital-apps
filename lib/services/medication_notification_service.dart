@@ -32,8 +32,11 @@ class MedicationNotificationService {
     final timesPerDay = frequency['times'] as int;
     final intervalHours = 24 ~/ timesPerDay;
 
+    // ✅ FIX: Use durationDays property instead of undefined property
+    final durationDays = medication.durationDays;
+
     // Schedule notifications for the duration
-    for (int day = 0; day < medication.durationDays; day++) {
+    for (int day = 0; day < durationDays; day++) {
       for (int timeIndex = 0; timeIndex < timesPerDay; timeIndex++) {
         final scheduledDate = DateTime.now().add(Duration(
           days: day,
@@ -69,7 +72,7 @@ class MedicationNotificationService {
     }
 
     print(
-        '✅ Scheduled ${medication.durationDays * timesPerDay} notifications for ${medication.genericName}');
+        '✅ Scheduled ${durationDays * timesPerDay} notifications for ${medication.genericName}');
   }
 
   static Map<String, dynamic> _parseFrequency(String frequency) {

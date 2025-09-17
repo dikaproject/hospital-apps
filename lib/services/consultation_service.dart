@@ -5,7 +5,85 @@ import 'auth_service.dart';
 import '../models/consultation_models.dart';
 
 class ConsultationService {
-  // AI Screening - Step 1
+  // Get Available Doctors (General Practitioners)
+  static Future<List<DoctorInfo>> getAvailableDoctors() async {
+    try {
+      print('🩺 Getting available doctors...');
+
+      final response = await HttpService.get(
+        '/api/consultations/available-doctors',
+        token: AuthService.getCurrentToken(),
+      );
+
+      print('📥 Available doctors response: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+
+        if (responseData['success'] == true) {
+          final doctors = responseData['data']['doctors'] as List;
+          return doctors.map((doctor) => DoctorInfo.fromJson(doctor)).toList();
+        } else {
+          throw Exception(responseData['message'] ?? 'Failed to get doctors');
+        }
+      } else {
+        final errorData = json.decode(response.body);
+        throw Exception(errorData['message'] ?? 'Failed to get doctors');
+      }
+    } catch (e) {
+      print('❌ Get available doctors error: ${e.toString()}');
+      throw Exception('Failed to get available doctors: ${e.toString()}');
+    }
+  }
+
+  // Direct Consultation without AI (NEW)
+  static Future<DirectConsultationResult> startDirectConsultation({
+    required String doctorId,
+    required List<String> symptoms,
+    String? notes,
+  }) async {
+    try {
+      final userId = AuthService.getCurrentUser()?.id;
+      if (userId == null) {
+        throw Exception('User not authenticated');
+      }
+
+      final requestBody = {
+        'userId': userId,
+        'doctorId': doctorId,
+        'symptoms': symptoms,
+      };
+
+      // Only add notes if not null or empty
+      if (notes != null && notes.trim().isNotEmpty) {
+        requestBody['notes'] = notes.trim();
+      }
+
+      final response = await HttpService.post(
+        '/api/consultations/start-direct',
+        requestBody,
+        token: AuthService.getCurrentToken(),
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+
+        if (responseData['success'] == true) {
+          return DirectConsultationResult.fromJson(responseData['data']);
+        } else {
+          throw Exception(
+              responseData['message'] ?? 'Direct consultation failed');
+        }
+      } else {
+        final errorData = json.decode(response.body);
+        throw Exception(errorData['message'] ?? 'Direct consultation failed');
+      }
+    } catch (e) {
+      throw Exception('Direct consultation failed: ${e.toString()}');
+    }
+  }
+
+  // AI Screening - Step 1 (EXISTING)
   static Future<AIScreeningResult> performAIScreening({
     required List<String> symptoms,
     List<Map<String, dynamic>>? chatHistory,
@@ -52,193 +130,7 @@ class ConsultationService {
     }
   }
 
-  // Generate Follow-up Question
-  static Future<String> generateFollowUpQuestion({
-    required List<String> symptoms,
-    List<Map<String, dynamic>>? chatHistory,
-  }) async {
-    try {
-      print('🔄 Generating follow-up question...');
-
-      final response = await HttpService.post(
-        '/api/consultations/generate-question',
-        {
-          'symptoms': symptoms,
-          'chatHistory': chatHistory ?? [],
-        },
-        token: AuthService.getCurrentToken(),
-      );
-
-      print(
-          '📥 Follow-up question response: ${response.statusCode} - ${response.body}');
-
-      if (response.statusCode == 200) {
-        final responseData = json.decode(response.body);
-
-        if (responseData['success'] == true) {
-          return responseData['data']['question'] as String;
-        } else {
-          throw Exception(
-              responseData['message'] ?? 'Failed to generate question');
-        }
-      } else {
-        final errorData = json.decode(response.body);
-        throw Exception(errorData['message'] ?? 'Question generation failed');
-      }
-    } catch (e) {
-      print('❌ Generate question error: ${e.toString()}');
-      throw Exception('Failed to generate question: ${e.toString()}');
-    }
-  }
-
-  // Test AI Connection
-  static Future<bool> testAIConnection() async {
-    try {
-      print('🔄 Testing AI connection...');
-
-      final response = await HttpService.get('/api/consultations/test-ai');
-
-      print('📥 AI test response: ${response.statusCode} - ${response.body}');
-
-      if (response.statusCode == 200) {
-        final responseData = json.decode(response.body);
-        return responseData['success'] == true;
-      }
-
-      return false;
-    } catch (e) {
-      print('❌ AI connection test failed: ${e.toString()}');
-      return false;
-    }
-  }
-
-  // Request Doctor Consultation - Step 2
-  static Future<DoctorConsultationResult> requestDoctorConsultation({
-    required String consultationId,
-    String paymentMethod = 'CASH',
-  }) async {
-    try {
-      print('🩺 Requesting doctor consultation for: $consultationId');
-
-      final response = await HttpService.post(
-        '/api/consultations/request-doctor',
-        {
-          'consultationId': consultationId,
-          'paymentMethod': paymentMethod,
-        },
-        token: AuthService.getCurrentToken(),
-      );
-
-      print(
-          '📥 Doctor consultation response: ${response.statusCode} - ${response.body}');
-
-      if (response.statusCode == 200) {
-        final responseData = json.decode(response.body);
-
-        if (responseData['success'] == true) {
-          return DoctorConsultationResult.fromJson(responseData['data']);
-        } else {
-          throw Exception(
-              responseData['message'] ?? 'Doctor consultation request failed');
-        }
-      } else {
-        final errorData = json.decode(response.body);
-        throw Exception(
-            errorData['message'] ?? 'Doctor consultation request failed');
-      }
-    } catch (e) {
-      print('❌ Doctor consultation request error: ${e.toString()}');
-      throw Exception('Doctor consultation request failed: ${e.toString()}');
-    }
-  }
-
-  // Book Appointment - Step 3
-  static Future<AppointmentBookingResult> bookAppointment({
-    required String consultationId,
-    required String doctorId,
-    required DateTime appointmentDate,
-    required DateTime startTime,
-    String? reason,
-  }) async {
-    try {
-      print('📅 Booking appointment for consultation: $consultationId');
-
-      final response = await HttpService.post(
-        '/api/consultations/book-appointment',
-        {
-          'consultationId': consultationId,
-          'doctorId': doctorId,
-          'appointmentDate': appointmentDate.toIso8601String(),
-          'startTime': startTime.toIso8601String(),
-          'reason': reason,
-        },
-        token: AuthService.getCurrentToken(),
-      );
-
-      print(
-          '📥 Appointment booking response: ${response.statusCode} - ${response.body}');
-
-      if (response.statusCode == 200) {
-        final responseData = json.decode(response.body);
-
-        if (responseData['success'] == true) {
-          return AppointmentBookingResult.fromJson(responseData['data']);
-        } else {
-          throw Exception(
-              responseData['message'] ?? 'Appointment booking failed');
-        }
-      } else {
-        final errorData = json.decode(response.body);
-        throw Exception(errorData['message'] ?? 'Appointment booking failed');
-      }
-    } catch (e) {
-      print('❌ Appointment booking error: ${e.toString()}');
-      throw Exception('Appointment booking failed: ${e.toString()}');
-    }
-  }
-
-  // Get Consultation History
-  static Future<List<ConsultationHistoryItem>> getConsultationHistory() async {
-    try {
-      final userId = AuthService.getCurrentUser()?.id;
-      if (userId == null) {
-        throw Exception('User not authenticated');
-      }
-
-      print('📋 Getting consultation history for user: $userId');
-
-      final response = await HttpService.get(
-        '/api/consultations/history/$userId',
-        token: AuthService.getCurrentToken(),
-      );
-
-      print(
-          '📥 Consultation history response: ${response.statusCode} - ${response.body}');
-
-      if (response.statusCode == 200) {
-        final responseData = json.decode(response.body);
-
-        if (responseData['success'] == true) {
-          final consultations = responseData['data']['consultations'] as List;
-          return consultations
-              .map((item) => ConsultationHistoryItem.fromJson(item))
-              .toList();
-        } else {
-          throw Exception(
-              responseData['message'] ?? 'Failed to get consultation history');
-        }
-      } else {
-        final errorData = json.decode(response.body);
-        throw Exception(
-            errorData['message'] ?? 'Failed to get consultation history');
-      }
-    } catch (e) {
-      print('❌ Get consultation history error: ${e.toString()}');
-      throw Exception('Failed to get consultation history: ${e.toString()}');
-    }
-  }
-
-  // Continue AI consultation with user response
+  // Continue AI consultation with user response (EXISTING)
   static Future<AIScreeningResult> continueAIConsultation({
     required String consultationId,
     required String userResponse,
@@ -275,6 +167,67 @@ class ConsultationService {
     } catch (e) {
       print('❌ Continue consultation error: ${e.toString()}');
       throw Exception('Continue consultation failed: ${e.toString()}');
+    }
+  }
+
+  // Get Consultation History (EXISTING)
+  static Future<List<ConsultationHistoryItem>> getConsultationHistory() async {
+    try {
+      final userId = AuthService.getCurrentUser()?.id;
+      if (userId == null) {
+        throw Exception('User not authenticated');
+      }
+
+      print('📋 Getting consultation history for user: $userId');
+
+      final response = await HttpService.get(
+        '/api/consultations/history/$userId',
+        token: AuthService.getCurrentToken(),
+      );
+
+      print('📥 Consultation history response: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+
+        if (responseData['success'] == true) {
+          final consultations = responseData['data']['consultations'] as List;
+          return consultations
+              .map((item) => ConsultationHistoryItem.fromJson(item))
+              .toList();
+        } else {
+          throw Exception(
+              responseData['message'] ?? 'Failed to get consultation history');
+        }
+      } else {
+        final errorData = json.decode(response.body);
+        throw Exception(
+            errorData['message'] ?? 'Failed to get consultation history');
+      }
+    } catch (e) {
+      print('❌ Get consultation history error: ${e.toString()}');
+      throw Exception('Failed to get consultation history: ${e.toString()}');
+    }
+  }
+
+  // Test AI Connection (EXISTING)
+  static Future<bool> testAIConnection() async {
+    try {
+      print('🔄 Testing AI connection...');
+
+      final response = await HttpService.get('/api/consultations/test-ai');
+
+      print('📥 AI test response: ${response.statusCode} - ${response.body}');
+
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+        return responseData['success'] == true;
+      }
+
+      return false;
+    } catch (e) {
+      print('❌ AI connection test failed: ${e.toString()}');
+      return false;
     }
   }
 }

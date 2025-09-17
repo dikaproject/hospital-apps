@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../../services/auth_service.dart';
 import '../../services/dashboard_service.dart';
 import '../../services/queue_service.dart';
+import '../../services/chat_consultation_service.dart';
 import '../auth/auth_screen.dart';
 import '../queue/take_queue_screen.dart';
 import '../qr/qr_show_screen.dart';
@@ -12,6 +13,9 @@ import '../lab/lab_results_screen.dart';
 import '../notifications/hospital_notifications_screen.dart';
 import '../settings/settings_screen.dart';
 import '../settings/edit_profile_screen.dart';
+import '../consultation/ai_consultation_screen.dart';
+import '../consultation/direct_consultation_screen.dart';
+import '../consultation/chat_consultation_list_screen.dart'; // Add this import
 import 'package:intl/intl.dart';
 
 class MainScreen extends StatefulWidget {
@@ -30,7 +34,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   DashboardData? _dashboardData;
   bool _isLoading = true;
   String? _error;
-  
+
   // Animation initialized flag
   bool _animationsInitialized = false;
 
@@ -47,19 +51,20 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         duration: const Duration(milliseconds: 1200),
         vsync: this,
       );
-      
+
       _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
         CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
       );
-      
+
       _slideAnimation = Tween<double>(begin: 30.0, end: 0.0).animate(
-        CurvedAnimation(parent: _animationController, curve: Curves.easeOutCubic),
+        CurvedAnimation(
+            parent: _animationController, curve: Curves.easeOutCubic),
       );
-      
+
       setState(() {
         _animationsInitialized = true;
       });
-      
+
       _animationController.forward();
     } catch (e) {
       print('❌ Animation setup error: $e');
@@ -76,6 +81,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     super.dispose();
   }
 
+  // Update just the _loadDashboardData method:
   Future<void> _loadDashboardData() async {
     try {
       setState(() {
@@ -84,25 +90,64 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       });
 
       print('🏠 Loading dashboard data...');
-      final dashboardData = await DashboardService.getDashboardData();
 
-      if (mounted) {
-        setState(() {
-          _dashboardData = dashboardData;
-          _isLoading = false;
-        });
+      try {
+        final dashboardData = await DashboardService.getDashboardData();
+        print('✅ Dashboard data loaded successfully');
+
+        if (mounted) {
+          setState(() {
+            _dashboardData = dashboardData;
+            _isLoading = false;
+          });
+        }
+      } catch (serviceError) {
+        print('❌ Service error: $serviceError');
+
+        // ✅ ENHANCED: Try to provide fallback minimal dashboard
+        try {
+          print('🔧 Attempting fallback dashboard...');
+
+          final fallbackUser = UserProfile(
+            id: 'fallback-${DateTime.now().millisecondsSinceEpoch}',
+            fullName: 'Pasien HospitalLink',
+            email: 'guest@hospitalink.com',
+          );
+
+          final fallbackDashboard =
+              DashboardService.createMinimalDashboard(fallbackUser);
+
+          if (mounted) {
+            setState(() {
+              _dashboardData = fallbackDashboard;
+              _isLoading = false;
+              _error = null; // Clear error since we have fallback data
+            });
+
+            _showSnackBar('Mode offline: Beberapa fitur mungkin terbatas');
+          }
+        } catch (fallbackError) {
+          print('❌ Fallback also failed: $fallbackError');
+
+          if (mounted) {
+            setState(() {
+              _error = 'Tidak dapat memuat data dashboard';
+              _isLoading = false;
+            });
+
+            _showSnackBar('Gagal memuat data: ${serviceError.toString()}');
+          }
+        }
       }
-
-      print('✅ Dashboard data loaded successfully');
     } catch (e) {
-      print('❌ Dashboard error: $e');
+      print('❌ Unexpected dashboard error: $e');
       if (mounted) {
         setState(() {
           _error = e.toString();
           _isLoading = false;
         });
 
-        _showSnackBar('Gagal memuat data dashboard: ${e.toString()}');
+        _showSnackBar('Error tidak terduga: ${e.toString()}');
       }
     }
   }
@@ -212,7 +257,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF667EEA),
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                 ),
@@ -269,6 +315,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     );
   }
 
+  // Fix _buildHeroSection method - complete the missing parts
   Widget _buildHeroSection() {
     final user = _dashboardData?.user;
 
@@ -337,45 +384,36 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                             _getGreeting(),
                             style: const TextStyle(
                               color: Colors.white70,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w400,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 4),
                           Text(
                             user?.fullName ?? 'Pasien HospitalLink',
                             style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 24,
+                              fontSize: 20,
                               fontWeight: FontWeight.bold,
-                              letterSpacing: -0.5,
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(height: 16),
-                          Row(
-                            children: [
-                              _buildStatusPill('Pasien Aktif', Icons.verified_rounded),
-                              if (user?.age != null) ...[
-                                const SizedBox(width: 12),
-                                _buildStatusPill('${user!.age} tahun', Icons.cake_rounded),
-                              ],
-                            ],
-                          ),
+                          const SizedBox(height: 8),
+                          _buildStatusPill('Pasien Aktif', Icons.verified_user),
                         ],
                       ),
                     ),
                     Column(
                       children: [
                         _buildModernHeaderButton(
-                          icon: Icons.notifications_none_rounded,
-                          badge: _dashboardData?.notifications.unreadCount ?? 0,
-                          onTap: () => _showNotifications(),
+                          icon: Icons.notifications_rounded,
+                          onTap: _showNotifications,
+                          badge: _dashboardData?.notifications?.unreadCount,
                         ),
                         const SizedBox(height: 12),
                         _buildModernHeaderButton(
-                          icon: Icons.person_outline_rounded,
-                          onTap: () => _showProfile(),
+                          icon: Icons.person_rounded,
+                          onTap: _showProfile,
                         ),
                       ],
                     ),
@@ -485,32 +523,68 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   Widget _buildQuickActions() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      child: Row(
+      child: Column(
         children: [
-          Expanded(
-            child: _buildModernActionCard(
-              title: 'Ambil Antrean',
-              subtitle: 'Buat antrean baru',
-              icon: Icons.add_task_rounded,
-              gradient: const LinearGradient(
-                colors: [Color(0xFF4FACFE), Color(0xFF00F2FE)],
+          // Row pertama - existing actions
+          Row(
+            children: [
+              Expanded(
+                child: _buildModernActionCard(
+                  title: 'Ambil Antrean',
+                  subtitle: 'Buat antrean baru',
+                  icon: Icons.add_task_rounded,
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF4FACFE), Color(0xFF00F2FE)],
+                  ),
+                  onTap: () => _takeQueue(),
+                ),
               ),
-              onTap: () => _takeQueue(),
-            ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _buildModernActionCard(
+                  title: 'Show QR',
+                  subtitle: 'Tampilkan kode QR',
+                  icon: Icons.qr_code_rounded,
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF11998E), Color(0xFF38EF7D)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  onTap: () => _showQR(),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: _buildModernActionCard(
-              title: 'Show QR',
-              subtitle: 'Tampilkan kode QR',
-              icon: Icons.qr_code_rounded,
-              gradient: const LinearGradient(
-                colors: [Color(0xFF11998E), Color(0xFF38EF7D)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+
+          const SizedBox(height: 16),
+
+          // Row kedua - NEW consultation actions
+          Row(
+            children: [
+              Expanded(
+                child: _buildModernActionCard(
+                  title: 'Konsultasi AI',
+                  subtitle: 'Screening dengan AI',
+                  icon: Icons.smart_toy_rounded,
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+                  ),
+                  onTap: () => _startAIConsultation(),
+                ),
               ),
-              onTap: () => _showQR(),
-            ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _buildModernActionCard(
+                  title: 'Chat Dokter',
+                  subtitle: 'Langsung ke dokter',
+                  icon: Icons.medical_services_rounded,
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFFF6B6B), Color(0xFFFFE66D)],
+                  ),
+                  onTap: () => _startDirectConsultation(),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -583,7 +657,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
   Widget _buildMyQueueStatus() {
     final queueStatus = _dashboardData?.queueStatus;
-    
+
     if (queueStatus == null) {
       return Container(
         margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -644,7 +718,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
                 foregroundColor: const Color(0xFF2F80ED),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                 ),
@@ -656,209 +731,300 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       );
     }
 
-    Color statusColor;
-    switch (queueStatus.status) {
-      case 'WAITING':
-        statusColor = const Color(0xFFFFB74D);
-        break;
-      case 'CALLED':
-        statusColor = const Color(0xFF81C784);
-        break;
-      case 'IN_PROGRESS':
-        statusColor = const Color(0xFF64B5F6);
-        break;
-      default:
-        statusColor = const Color(0xFFBDBDBD);
-    }
+    // Fix the queue status display with proper text widgets
+    try {
+      Color statusColor;
+      final status = queueStatus.status.toUpperCase();
+      switch (status) {
+        case 'WAITING':
+          statusColor = const Color(0xFFFFB74D);
+          break;
+        case 'CALLED':
+          statusColor = const Color(0xFF81C784);
+          break;
+        case 'IN_PROGRESS':
+          statusColor = const Color(0xFF64B5F6);
+          break;
+        default:
+          statusColor = const Color(0xFFBDBDBD);
+      }
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+      final queueNumber =
+          queueStatus.queueNumber.isNotEmpty ? queueStatus.queueNumber : 'N/A';
+      final doctorName = queueStatus.doctor.name.isNotEmpty
+          ? queueStatus.doctor.name
+          : 'Dokter Tidak Diketahui';
+      final doctorSpecialty = queueStatus.doctor.specialty.isNotEmpty
+          ? queueStatus.doctor.specialty
+          : 'Spesialis Umum';
+
+      return Container(
+        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF667EEA).withOpacity(0.3),
+              blurRadius: 15,
+              offset: const Offset(0, 8),
+            ),
+          ],
         ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF667EEA).withOpacity(0.3),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.schedule_rounded,
-                color: Colors.white,
-                size: 24,
-              ),
-              const SizedBox(width: 12),
-              const Text(
-                'Status Antrean Saya',
-                style: TextStyle(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(
+                  Icons.schedule_rounded,
                   color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+                  size: 24,
                 ),
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: statusColor,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: statusColor.withOpacity(0.3),
-                      blurRadius: 8,
-                      spreadRadius: 1,
-                    ),
-                  ],
-                ),
-                child: Text(
-                  queueStatus.statusText,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Nomor Antrean',
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Status Antrean Saya',
                     style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    queueStatus.queueNumber,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const Text(
-                    'Estimasi',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    queueStatus.estimatedTimeText,
-                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
                     ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  queueStatus.doctor.name,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                Text(
-                  queueStatus.doctor.specialty,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 14,
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: statusColor,
+                    borderRadius: BorderRadius.circular(16),
                   ),
-                ),
-                if (queueStatus.position > 1) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    'Posisi: ${queueStatus.position} dari antrean',
+                  child: Text(
+                    queueStatus.statusText,
                     style: const TextStyle(
-                      color: Colors.white70,
+                      color: Colors.white,
                       fontSize: 12,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                ],
+                ),
               ],
             ),
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => _viewQueueDetails(queueStatus.id),
-                  icon: const Icon(Icons.info_outline_rounded, size: 18),
-                  label: const Text('Detail'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side: const BorderSide(color: Colors.white),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  flex: 1,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Nomor Antrean',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      FittedBox(
+                        child: Text(
+                          queueNumber,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () => _cancelQueue(queueStatus.id),
-                  icon: const Icon(Icons.close_rounded, size: 18),
-                  label: const Text('Batalkan'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFF6B6B),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    elevation: 0,
+                Expanded(
+                  flex: 1,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      const Text(
+                        'Estimasi Tunggu',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      FittedBox(
+                        child: Text(
+                          '~${queueStatus.estimatedWaitTime} min',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(16),
               ),
-            ],
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    doctorName,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 2,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    doctorSpecialty,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+                  if (queueStatus.position > 1) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        'Posisi ${queueStatus.position} dalam antrean',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: queueStatus.id.isNotEmpty
+                        ? () => _viewQueueDetails(queueStatus.id)
+                        : null,
+                    icon: const Icon(Icons.info_outline_rounded, size: 18),
+                    label: const Text('Detail'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      side: const BorderSide(color: Colors.white),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: queueStatus.id.isNotEmpty
+                        ? () => _cancelQueue(queueStatus.id)
+                        : null,
+                    icon: const Icon(Icons.close_rounded, size: 18),
+                    label: const Text('Batalkan'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFF6B6B),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      elevation: 0,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      print('❌ Error building queue status: $e');
+      return Container(
+        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFF6B6B).withOpacity(0.1),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: const Color(0xFFFF6B6B).withOpacity(0.3),
+            width: 1,
           ),
-        ],
-      ),
-    );
+        ),
+        child: Column(
+          children: [
+            const Icon(
+              Icons.error_outline_rounded,
+              color: Color(0xFFFF6B6B),
+              size: 48,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Error Status Antrean',
+              style: TextStyle(
+                color: Color(0xFFFF6B6B),
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Terjadi kesalahan saat memuat status antrean',
+              style: TextStyle(
+                color: Color(0xFF7F8C8D),
+                fontSize: 14,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _refreshData,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Refresh'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF667EEA),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   Widget _buildFeatureGrid() {
@@ -928,6 +1094,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     );
   }
 
+  // Fix _buildModernFeatureCard method - complete missing BoxShadow
   Widget _buildModernFeatureCard({
     required String title,
     required IconData icon,
@@ -980,7 +1147,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                 if (badge != null && badge > 0) ...[
                   const Spacer(),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
                       color: const Color(0xFFFF6B6B),
                       borderRadius: BorderRadius.circular(12),
@@ -988,7 +1156,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                         BoxShadow(
                           color: const Color(0xFFFF6B6B).withOpacity(0.3),
                           blurRadius: 8,
-                          spreadRadius: 1,
+                          offset: const Offset(0, 2),
                         ),
                       ],
                     ),
@@ -1039,7 +1207,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       'Stay healthy, stay happy! 😊',
       'Ingat minum air putih dan olahraga teratur ya!',
     ];
-    
+
     final index = DateTime.now().day % messages.length;
     return messages[index];
   }
@@ -1066,7 +1234,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.person_rounded, color: Color(0xFF667EEA)),
+              leading:
+                  const Icon(Icons.person_rounded, color: Color(0xFF667EEA)),
               title: const Text('Edit Profil'),
               onTap: () {
                 Navigator.pop(context);
@@ -1079,7 +1248,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.settings_rounded, color: Color(0xFF667EEA)),
+              leading:
+                  const Icon(Icons.settings_rounded, color: Color(0xFF667EEA)),
               title: const Text('Pengaturan'),
               onTap: () {
                 Navigator.pop(context);
@@ -1092,7 +1262,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.logout_rounded, color: Color(0xFFFF6B6B)),
+              leading:
+                  const Icon(Icons.logout_rounded, color: Color(0xFFFF6B6B)),
               title: const Text('Logout'),
               onTap: () {
                 Navigator.pop(context);
@@ -1116,9 +1287,73 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
   void _showQR() {
     Navigator.push(
-      context, 
-      MaterialPageRoute(builder: (_) => const QRShowScreen())
+        context, MaterialPageRoute(builder: (_) => const QRShowScreen()));
+  }
+
+  void _startAIConsultation() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const AIConsultationScreen(),
+      ),
     );
+  }
+
+  void _startDirectConsultation() async {
+    try {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF2E7D89)),
+          ),
+        ),
+      );
+
+      // Check existing chat consultations first
+      final existingChats =
+          await ChatConsultationService.getChatConsultations();
+
+      // Hide loading
+      if (mounted) Navigator.pop(context);
+
+      if (existingChats.isNotEmpty) {
+        // User has existing chats - go to chat list
+        if (mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const ChatConsultationListScreen(),
+            ),
+          );
+        }
+      } else {
+        // No existing chats - go to create new consultation
+        if (mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const DirectConsultationScreen(),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      // Hide loading on error
+      if (mounted) Navigator.pop(context);
+
+      // Fallback to direct consultation screen
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const DirectConsultationScreen(),
+          ),
+        );
+      }
+    }
   }
 
   void _viewQueueDetails(String queueId) async {
@@ -1132,7 +1367,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       );
 
       final queueDetails = await QueueService.getQueueDetails(queueId);
-      
+
       if (mounted) {
         Navigator.pop(context);
 
@@ -1171,14 +1406,24 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
             children: [
               _buildDetailRow('Nomor Antrean', queueDetails['queueNumber']),
               _buildDetailRow('Status', queueDetails['status']),
-              _buildDetailRow('Posisi', '${queueDetails['position']} dari ${queueDetails['totalWaiting']}'),
-              _buildDetailRow('Estimasi Tunggu', '~${queueDetails['estimatedWaitTime']} menit'),
+              _buildDetailRow('Posisi',
+                  '${queueDetails['position']} dari ${queueDetails['totalWaiting']}'),
+              _buildDetailRow('Estimasi Tunggu',
+                  '~${queueDetails['estimatedWaitTime']} menit'),
               _buildDetailRow('Dokter', queueDetails['doctor']['name']),
-              _buildDetailRow('Spesialisasi', queueDetails['doctor']['specialty']),
-              _buildDetailRow('Tanggal', DateFormat('dd/MM/yyyy').format(DateTime.parse(queueDetails['queueDate']))),
+              _buildDetailRow(
+                  'Spesialisasi', queueDetails['doctor']['specialty']),
+              _buildDetailRow(
+                  'Tanggal',
+                  DateFormat('dd/MM/yyyy')
+                      .format(DateTime.parse(queueDetails['queueDate']))),
               if (queueDetails['checkInTime'] != null)
-                _buildDetailRow('Check-in', DateFormat('HH:mm').format(DateTime.parse(queueDetails['checkInTime']))),
-              if (queueDetails['notes'] != null && queueDetails['notes'].isNotEmpty)
+                _buildDetailRow(
+                    'Check-in',
+                    DateFormat('HH:mm')
+                        .format(DateTime.parse(queueDetails['checkInTime']))),
+              if (queueDetails['notes'] != null &&
+                  queueDetails['notes'].isNotEmpty)
                 _buildDetailRow('Catatan', queueDetails['notes']),
             ],
           ),
@@ -1221,6 +1466,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       ),
     );
   }
+
   void _cancelQueue(String queueId) async {
     final shouldCancel = await showDialog<bool>(
       context: context,
@@ -1270,8 +1516,9 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         ),
       );
 
-      final success = await QueueService.cancelQueue(queueId, reason: 'Dibatalkan oleh pasien');
-      
+      final success = await QueueService.cancelQueue(queueId,
+          reason: 'Dibatalkan oleh pasien');
+
       if (mounted) {
         Navigator.pop(context);
 
@@ -1328,7 +1575,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
   void _showSnackBar(String message) {
     if (!mounted) return;
-    
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -1365,7 +1612,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                   await AuthService.logout();
                   if (mounted) {
                     Navigator.of(context).pushAndRemoveUntil(
-                      MaterialPageRoute(builder: (context) => const AuthScreen()),
+                      MaterialPageRoute(
+                          builder: (context) => const AuthScreen()),
                       (route) => false,
                     );
                   }

@@ -177,34 +177,143 @@ class MedicalRecord {
     required this.doctor,
   });
 
+  // ✅ ENHANCED: Ultra-safe JSON parsing
   factory MedicalRecord.fromJson(Map<String, dynamic> json) {
-    return MedicalRecord(
-      id: json['id'],
-      userId: json['userId'],
-      doctorId: json['doctorId'],
-      consultationId: json['consultationId'],
-      visitDate: DateTime.parse(json['visitDate']),
-      queueNumber: json['queueNumber'],
-      diagnosis: json['diagnosis'],
-      treatment: json['treatment'],
-      symptoms: json['symptoms'] is String
-          ? jsonDecode(json['symptoms'])
-          : json['symptoms'],
-      vitalSigns: json['vitalSigns'] is String
-          ? jsonDecode(json['vitalSigns'])
-          : json['vitalSigns'],
-      medications: json['medications'] is String
-          ? jsonDecode(json['medications'])
-          : json['medications'],
-      followUpDate: json['followUpDate'] != null
-          ? DateTime.parse(json['followUpDate'])
-          : null,
-      totalCost: json['totalCost']?.toDouble(),
-      paymentStatus: json['paymentStatus'] ?? 'PENDING',
-      paymentMethod: json['paymentMethod'] ?? 'CASH',
-      notes: json['notes'],
-      doctor: DoctorInfo.fromJson(json['doctor']),
-    );
+    print('🔍 === PARSING MEDICAL RECORD ===');
+    print('📊 JSON keys: ${json.keys.toList()}');
+
+    try {
+      // ✅ SAFE: Parse doctor info
+      DoctorInfo doctor;
+      try {
+        final doctorData = json['doctor'];
+        print('🔍 Doctor data type: ${doctorData.runtimeType}');
+        print('🔍 Doctor data: $doctorData');
+
+        if (doctorData is Map<String, dynamic>) {
+          doctor = DoctorInfo.fromJson(doctorData);
+        } else {
+          print('⚠️ Doctor data is not a map, using fallback');
+          doctor = DoctorInfo(
+            id: json['doctorId']?.toString() ?? 'unknown',
+            name: 'Dokter Tidak Diketahui',
+            specialty: 'Umum',
+          );
+        }
+      } catch (e) {
+        print('❌ Error parsing doctor: $e');
+        doctor = DoctorInfo(
+          id: json['doctorId']?.toString() ?? 'unknown',
+          name: 'Dokter Tidak Diketahui',
+          specialty: 'Umum',
+        );
+      }
+
+      // ✅ SAFE: Parse JSON strings or objects
+      Map<String, dynamic>? symptoms;
+      try {
+        final symptomsData = json['symptoms'];
+        if (symptomsData != null) {
+          if (symptomsData is String) {
+            symptoms = jsonDecode(symptomsData);
+          } else if (symptomsData is Map<String, dynamic>) {
+            symptoms = symptomsData;
+          } else if (symptomsData is Map) {
+            symptoms = Map<String, dynamic>.from(symptomsData);
+          }
+        }
+      } catch (e) {
+        print('❌ Error parsing symptoms: $e');
+        symptoms = null;
+      }
+
+      Map<String, dynamic>? vitalSigns;
+      try {
+        final vitalData = json['vitalSigns'];
+        if (vitalData != null) {
+          if (vitalData is String) {
+            vitalSigns = jsonDecode(vitalData);
+          } else if (vitalData is Map<String, dynamic>) {
+            vitalSigns = vitalData;
+          } else if (vitalData is Map) {
+            vitalSigns = Map<String, dynamic>.from(vitalData);
+          }
+        }
+      } catch (e) {
+        print('❌ Error parsing vital signs: $e');
+        vitalSigns = null;
+      }
+
+      Map<String, dynamic>? medications;
+      try {
+        final medicationsData = json['medications'];
+        if (medicationsData != null) {
+          if (medicationsData is String) {
+            medications = jsonDecode(medicationsData);
+          } else if (medicationsData is Map<String, dynamic>) {
+            medications = medicationsData;
+          } else if (medicationsData is Map) {
+            medications = Map<String, dynamic>.from(medicationsData);
+          } else if (medicationsData is List) {
+            // ✅ FIX: Handle List as medications
+            medications = {'medications': medicationsData};
+          }
+        }
+      } catch (e) {
+        print('❌ Error parsing medications: $e');
+        medications = null;
+      }
+
+      final record = MedicalRecord(
+        id: json['id']?.toString() ?? '',
+        userId: json['userId']?.toString() ?? '',
+        doctorId: json['doctorId']?.toString() ?? '',
+        consultationId: json['consultationId']?.toString(),
+        visitDate: DateTime.tryParse(json['visitDate']?.toString() ?? '') ??
+            DateTime.now(),
+        queueNumber: json['queueNumber']?.toString(),
+        diagnosis: json['diagnosis']?.toString() ?? 'Tidak ada diagnosis',
+        treatment: json['treatment']?.toString() ?? 'Tidak ada treatment',
+        symptoms: symptoms,
+        vitalSigns: vitalSigns,
+        medications: medications,
+        followUpDate: json['followUpDate'] != null
+            ? DateTime.tryParse(json['followUpDate'].toString())
+            : null,
+        totalCost: json['totalCost'] != null
+            ? double.tryParse(json['totalCost'].toString())
+            : null,
+        paymentStatus: json['paymentStatus']?.toString() ?? 'PENDING',
+        paymentMethod: json['paymentMethod']?.toString() ?? 'CASH',
+        notes: json['notes']?.toString(),
+        doctor: doctor,
+      );
+
+      print('✅ Medical record parsed successfully: ${record.diagnosis}');
+      return record;
+    } catch (e, stackTrace) {
+      print('❌ CRITICAL ERROR parsing medical record: $e');
+      print('📥 Stack trace: $stackTrace');
+      print('📥 JSON data: ${json.toString()}');
+
+      // ✅ FALLBACK: Return minimal valid record
+      return MedicalRecord(
+        id: json['id']?.toString() ??
+            'error-${DateTime.now().millisecondsSinceEpoch}',
+        userId: json['userId']?.toString() ?? '',
+        doctorId: json['doctorId']?.toString() ?? '',
+        visitDate: DateTime.now(),
+        diagnosis: 'Error parsing medical record',
+        treatment: 'Hubungi rumah sakit untuk informasi lebih lanjut',
+        paymentStatus: 'UNKNOWN',
+        paymentMethod: 'UNKNOWN',
+        doctor: DoctorInfo(
+          id: 'unknown',
+          name: 'Dokter Tidak Diketahui',
+          specialty: 'Umum',
+        ),
+      );
+    }
   }
 }
 
@@ -221,9 +330,9 @@ class DoctorInfo {
 
   factory DoctorInfo.fromJson(Map<String, dynamic> json) {
     return DoctorInfo(
-      id: json['id'],
-      name: json['name'],
-      specialty: json['specialty'],
+      id: json['id']?.toString() ?? 'unknown',
+      name: json['name']?.toString() ?? 'Dokter Tidak Diketahui',
+      specialty: json['specialty']?.toString() ?? 'Umum',
     );
   }
 }

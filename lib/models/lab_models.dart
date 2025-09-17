@@ -20,6 +20,30 @@ class TestResult {
     required this.status,
     this.description = '',
   });
+
+  factory TestResult.fromJson(Map<String, dynamic> json) {
+    return TestResult(
+      testName: json['testName'] ?? '',
+      value: json['value'] ?? '',
+      unit: json['unit'] ?? '',
+      normalRange: json['normalRange'] ?? '',
+      status: _parseTestStatus(json['status']),
+      description: json['description'] ?? '',
+    );
+  }
+
+  static TestStatus _parseTestStatus(dynamic status) {
+    switch (status?.toString().toUpperCase()) {
+      case 'NORMAL':
+        return TestStatus.normal;
+      case 'ABNORMAL':
+        return TestStatus.abnormal;
+      case 'BORDERLINE':
+        return TestStatus.borderline;
+      default:
+        return TestStatus.normal;
+    }
+  }
 }
 
 class Medication {
@@ -44,13 +68,10 @@ class Medication {
     this.sideEffects = '',
     this.isActive = true,
     this.reminderEnabled = false,
-    this.reminderTimes = const [],
-  }) {
-    // Ensure reminderTimes is mutable
-    if (reminderTimes is! List<String>) {
-      this.reminderTimes = List<String>.from(reminderTimes);
-    }
-  }
+    List<String>? reminderTimes, // ✅ FIX: Make nullable parameter
+  }) : reminderTimes = reminderTimes != null
+            ? List<String>.from(reminderTimes)
+            : <String>[]; // ✅ FIX: Proper initialization
 
   // Add copyWith method for easy updates
   Medication copyWith({
@@ -78,6 +99,38 @@ class Medication {
       reminderTimes: reminderTimes ?? List<String>.from(this.reminderTimes),
     );
   }
+
+  // ✅ ADD: fromJson method for proper parsing
+  factory Medication.fromJson(Map<String, dynamic> json) {
+    return Medication(
+      id: json['id'] ?? '',
+      name: json['name'] ?? '',
+      dosage: json['dosage'] ?? '',
+      frequency: json['frequency'] ?? '',
+      duration: json['duration'] ?? 7,
+      instructions: json['instructions'] ?? '',
+      sideEffects: json['sideEffects'] ?? '',
+      isActive: json['isActive'] ?? true,
+      reminderEnabled: json['reminderEnabled'] ?? false,
+      reminderTimes: (json['reminderTimes'] as List?)?.cast<String>() ?? [],
+    );
+  }
+
+  // ✅ ADD: toJson method
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'dosage': dosage,
+      'frequency': frequency,
+      'duration': duration,
+      'instructions': instructions,
+      'sideEffects': sideEffects,
+      'isActive': isActive,
+      'reminderEnabled': reminderEnabled,
+      'reminderTimes': reminderTimes,
+    };
+  }
 }
 
 class LabResult {
@@ -104,4 +157,29 @@ class LabResult {
     this.doctorNotes = '',
     this.nextCheckup,
   });
+
+  // ✅ ADD: fromJson method
+  static TestResult fromJson(Map<String, dynamic> json) {
+    return TestResult(
+      testName: json['testName'] ?? '',
+      value: json['value'] ?? '',
+      unit: json['unit'] ?? '',
+      normalRange: json['normalRange'] ?? '',
+      status: _parseTestStatus(json['status']),
+      description: json['description'] ?? '',
+    );
+  }
+
+  static TestStatus _parseTestStatus(dynamic status) {
+    switch (status?.toString().toUpperCase()) {
+      case 'NORMAL':
+        return TestStatus.normal;
+      case 'ABNORMAL':
+        return TestStatus.abnormal;
+      case 'BORDERLINE':
+        return TestStatus.borderline;
+      default:
+        return TestStatus.normal;
+    }
+  }
 }

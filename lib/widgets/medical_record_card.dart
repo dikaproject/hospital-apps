@@ -17,6 +17,7 @@ class MedicalRecordCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: Colors.white,
@@ -24,8 +25,8 @@ class MedicalRecordCard extends StatelessWidget {
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.06),
-              blurRadius: 12,
-              offset: const Offset(0, 6),
+              blurRadius: 15,
+              offset: const Offset(0, 8),
             ),
           ],
         ),
@@ -38,7 +39,7 @@ class MedicalRecordCard extends StatelessWidget {
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [Color(0xFF89F7FE), Color(0xFF66A6FF)],
+                      colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
                     ),
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -54,12 +55,14 @@ class MedicalRecordCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Rekam Medis',
+                        medicalRecord.diagnosis,
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
                           color: Color(0xFF2C3E50),
                         ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 4),
                       Text(
@@ -72,9 +75,18 @@ class MedicalRecordCard extends StatelessWidget {
                     ],
                   ),
                 ),
+                Text(
+                  DateFormat('dd/MM/yyyy').format(medicalRecord.visitDate),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF7F8C8D),
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 16),
+
+            // ✅ ENHANCED: Treatment Preview
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -84,89 +96,55 @@ class MedicalRecordCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Diagnosis:',
-                    style: const TextStyle(
+                  const Text(
+                    'Treatment',
+                    style: TextStyle(
                       fontSize: 12,
-                      color: Color(0xFF7F8C8D),
-                      fontWeight: FontWeight.w500,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF667EEA),
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    medicalRecord.diagnosis,
+                    medicalRecord.treatment,
                     style: const TextStyle(
-                      fontSize: 14,
+                      fontSize: 13,
                       color: Color(0xFF2C3E50),
-                      fontWeight: FontWeight.w600,
                     ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Tanggal Kunjungan',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF7F8C8D),
-                        ),
-                      ),
-                      Text(
-                        DateFormat('dd/MM/yyyy')
-                            .format(medicalRecord.visitDate),
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF2C3E50),
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (medicalRecord.queueNumber != null) ...[
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'No. Antrean',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Color(0xFF7F8C8D),
-                          ),
-                        ),
-                        Text(
-                          medicalRecord.queueNumber!,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF2C3E50),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
                 ],
               ),
             ),
-            const SizedBox(height: 16),
+
+            const SizedBox(height: 12),
+
+            // ✅ ENHANCED: Quick Info Row
             Row(
               children: [
-                Icon(
-                  Icons.remove_red_eye_rounded,
-                  color: const Color(0xFF667EEA),
-                  size: 16,
-                ),
-                const SizedBox(width: 8),
-                const Text(
-                  'Tap untuk melihat detail',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF667EEA),
-                    fontWeight: FontWeight.w500,
+                // Payment Status
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _getPaymentStatusColor(medicalRecord.paymentStatus),
+                    borderRadius: BorderRadius.circular(8),
                   ),
+                  child: Text(
+                    _getPaymentStatusText(medicalRecord.paymentStatus),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: Color(0xFF667EEA),
+                  size: 20,
                 ),
               ],
             ),
@@ -174,6 +152,28 @@ class MedicalRecordCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Color _getPaymentStatusColor(String status) {
+    switch (status.toUpperCase()) {
+      case 'PAID':
+        return const Color(0xFF27AE60);
+      case 'PENDING':
+        return const Color(0xFFFFB74D);
+      default:
+        return const Color(0xFF95A5A6);
+    }
+  }
+
+  String _getPaymentStatusText(String status) {
+    switch (status.toUpperCase()) {
+      case 'PAID':
+        return 'Lunas';
+      case 'PENDING':
+        return 'Pending';
+      default:
+        return status;
+    }
   }
 }
 
@@ -188,99 +188,139 @@ class MedicalRecordDetailSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: MediaQuery.of(context).size.height * 0.85,
+      height: MediaQuery.of(context).size.height * 0.95,
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: Column(
         children: [
+          // ✅ ENHANCED: Header
           Container(
-            width: 50,
-            height: 5,
-            margin: const EdgeInsets.symmetric(vertical: 12),
-            decoration: BoxDecoration(
-              color: const Color(0xFFE0E0E0),
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-          Padding(
             padding: const EdgeInsets.all(24),
-            child: Row(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+              ),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: Column(
               children: [
-                Expanded(
-                  child: Text(
-                    'Detail Rekam Medis',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF2C3E50),
-                    ),
+                Container(
+                  width: 50,
+                  height: 5,
+                  margin: const EdgeInsets.only(bottom: 20),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(10),
                   ),
                 ),
-                IconButton(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close_rounded),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.medical_information_rounded,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Rekam Medis',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            DateFormat('dd MMMM yyyy')
+                                .format(medicalRecord.visitDate),
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon:
+                          const Icon(Icons.close_rounded, color: Colors.white),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
+
+          // ✅ ENHANCED: Scrollable Content
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
+              padding: const EdgeInsets.all(24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildDetailSection('Informasi Kunjungan', [
-                    _buildDetailRow(
-                        'Tanggal Kunjungan',
-                        DateFormat('dd MMMM yyyy')
-                            .format(medicalRecord.visitDate)),
-                    _buildDetailRow('Dokter', medicalRecord.doctor.name),
-                    _buildDetailRow(
-                        'Spesialisasi', medicalRecord.doctor.specialty),
-                    if (medicalRecord.queueNumber != null)
-                      _buildDetailRow(
-                          'No. Antrean', medicalRecord.queueNumber!),
-                  ]),
+                  // Basic Information
+                  _buildDetailSection(
+                      '📋 Informasi Dasar',
+                      [
+                        _buildDetailRow('Dokter', medicalRecord.doctor.name),
+                        _buildDetailRow(
+                            'Spesialisasi', medicalRecord.doctor.specialty),
+                        _buildDetailRow(
+                            'Tanggal Kunjungan',
+                            DateFormat('dd MMMM yyyy, HH:mm')
+                                .format(medicalRecord.visitDate)),
+                        if (medicalRecord.queueNumber != null)
+                          _buildDetailRow(
+                              'No. Antrean', medicalRecord.queueNumber!),
+                      ],
+                      true),
+
                   const SizedBox(height: 24),
-                  _buildDetailSection('Diagnosis & Pengobatan', [
-                    _buildMultiLineDetailRow(
-                        'Diagnosis', medicalRecord.diagnosis),
-                    _buildMultiLineDetailRow(
-                        'Pengobatan', medicalRecord.treatment),
-                  ]),
-                  if (medicalRecord.symptoms != null) ...[
-                    const SizedBox(height: 24),
-                    _buildDetailSection('Gejala', [
-                      _buildJsonDataWidget(medicalRecord.symptoms!),
-                    ]),
-                  ],
-                  if (medicalRecord.vitalSigns != null) ...[
-                    const SizedBox(height: 24),
-                    _buildDetailSection('Tanda Vital', [
-                      _buildJsonDataWidget(medicalRecord.vitalSigns!),
-                    ]),
-                  ],
-                  if (medicalRecord.medications != null) ...[
-                    const SizedBox(height: 24),
-                    _buildDetailSection('Obat yang Diberikan', [
-                      _buildJsonDataWidget(medicalRecord.medications!),
-                    ]),
-                  ],
-                  if (medicalRecord.notes != null) ...[
-                    const SizedBox(height: 24),
-                    _buildDetailSection('Catatan Tambahan', [
-                      Text(
-                        medicalRecord.notes!,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Color(0xFF2C3E50),
-                          height: 1.5,
-                        ),
-                      ),
-                    ]),
-                  ],
+
+                  // Diagnosis & Treatment
+                  _buildDetailSection(
+                      '🔬 Diagnosis & Pengobatan',
+                      [
+                        _buildRichDetailCard(
+                            'Diagnosis', medicalRecord.diagnosis),
+                        _buildRichDetailCard(
+                            'Pengobatan', medicalRecord.treatment),
+                      ],
+                      true),
+
+                  const SizedBox(height: 24),
+
+                  // Clinical Data
+                  if (medicalRecord.symptoms != null ||
+                      medicalRecord.vitalSigns != null)
+                    _buildClinicalDataSection(),
+
+                  // Medications
+                  if (medicalRecord.medications != null)
+                    _buildMedicationsSection(),
+
+                  // Payment Information
+                  _buildPaymentSection(),
+
+                  // Notes
+                  if (medicalRecord.notes != null &&
+                      medicalRecord.notes!.isNotEmpty)
+                    _buildNotesSection(),
+
                   const SizedBox(height: 32),
                 ],
               ),
@@ -291,12 +331,15 @@ class MedicalRecordDetailSheet extends StatelessWidget {
     );
   }
 
-  Widget _buildDetailSection(String title, List<Widget> children) {
+  Widget _buildDetailSection(String title, List<Widget> children,
+      [bool isBasicInfo = false]) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE1E5E9), width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -309,8 +352,9 @@ class MedicalRecordDetailSheet extends StatelessWidget {
               color: Color(0xFF2C3E50),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           ...children,
+          if (isBasicInfo) const Divider(),
         ],
       ),
     );
@@ -318,7 +362,7 @@ class MedicalRecordDetailSheet extends StatelessWidget {
 
   Widget _buildDetailRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -333,7 +377,7 @@ class MedicalRecordDetailSheet extends StatelessWidget {
               ),
             ),
           ),
-          const Text(': '),
+          const Text(': ', style: TextStyle(color: Color(0xFF7F8C8D))),
           Expanded(
             child: Text(
               value,
@@ -349,36 +393,34 @@ class MedicalRecordDetailSheet extends StatelessWidget {
     );
   }
 
-  Widget _buildMultiLineDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+  Widget _buildRichDetailCard(String title, String content) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE1E5E9)),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            label,
+            title,
             style: const TextStyle(
               fontSize: 14,
-              color: Color(0xFF7F8C8D),
-              fontWeight: FontWeight.w500,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF667EEA),
             ),
           ),
           const SizedBox(height: 8),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFFE0E0E0)),
-            ),
-            child: Text(
-              value,
-              style: const TextStyle(
-                fontSize: 14,
-                color: Color(0xFF2C3E50),
-                height: 1.5,
-              ),
+          Text(
+            content,
+            style: const TextStyle(
+              fontSize: 14,
+              color: Color(0xFF2C3E50),
+              height: 1.5,
             ),
           ),
         ],
@@ -386,11 +428,139 @@ class MedicalRecordDetailSheet extends StatelessWidget {
     );
   }
 
-  Widget _buildJsonDataWidget(Map<String, dynamic> data) {
+  Widget _buildClinicalDataSection() {
     return Column(
-      children: data.entries.map((entry) {
-        return _buildDetailRow(entry.key, entry.value.toString());
-      }).toList(),
+      children: [
+        _buildDetailSection('🩺 Data Klinis', [
+          if (medicalRecord.symptoms != null)
+            _buildJsonDataCard('Gejala', medicalRecord.symptoms!),
+          if (medicalRecord.vitalSigns != null)
+            _buildJsonDataCard('Tanda Vital', medicalRecord.vitalSigns!),
+        ]),
+        const SizedBox(height: 24),
+      ],
     );
+  }
+
+  Widget _buildMedicationsSection() {
+    return Column(
+      children: [
+        _buildDetailSection('💊 Obat-obatan', [
+          _buildJsonDataCard('Daftar Obat', medicalRecord.medications!),
+        ]),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  Widget _buildPaymentSection() {
+    return Column(
+      children: [
+        _buildDetailSection('💳 Informasi Pembayaran', [
+          _buildDetailRow('Status Pembayaran',
+              _getPaymentStatusText(medicalRecord.paymentStatus)),
+          _buildDetailRow('Metode Pembayaran',
+              _getPaymentMethodText(medicalRecord.paymentMethod)),
+          if (medicalRecord.totalCost != null)
+            _buildDetailRow('Total Biaya',
+                'Rp ${NumberFormat('#,###').format(medicalRecord.totalCost)}'),
+        ]),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  Widget _buildNotesSection() {
+    return Column(
+      children: [
+        _buildDetailSection('📝 Catatan', [
+          _buildRichDetailCard('Catatan Tambahan', medicalRecord.notes!),
+        ]),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  Widget _buildJsonDataCard(String title, Map<String, dynamic> data) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE1E5E9)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF667EEA),
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...data.entries.map((entry) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 100,
+                    child: Text(
+                      entry.key,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF7F8C8D),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  const Text(': ', style: TextStyle(color: Color(0xFF7F8C8D))),
+                  Expanded(
+                    child: Text(
+                      entry.value.toString(),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF2C3E50),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+        ],
+      ),
+    );
+  }
+
+  String _getPaymentStatusText(String status) {
+    switch (status.toUpperCase()) {
+      case 'PAID':
+        return 'Sudah Dibayar ✅';
+      case 'PENDING':
+        return 'Menunggu Pembayaran ⏳';
+      default:
+        return status;
+    }
+  }
+
+  String _getPaymentMethodText(String method) {
+    switch (method.toUpperCase()) {
+      case 'CASH':
+        return 'Tunai';
+      case 'BPJS':
+        return 'BPJS Kesehatan';
+      case 'INSURANCE':
+        return 'Asuransi Kesehatan';
+      default:
+        return method;
+    }
   }
 }

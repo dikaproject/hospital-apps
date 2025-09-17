@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'dart:convert';
 
 enum NotificationType {
   queue,
@@ -6,13 +6,13 @@ enum NotificationType {
   labResult,
   payment,
   system,
-  healthTip
+  healthTip,
 }
 
 enum NotificationPriority {
   high,
   medium,
-  low
+  low,
 }
 
 class HospitalNotification {
@@ -22,10 +22,10 @@ class HospitalNotification {
   final NotificationType type;
   final NotificationPriority priority;
   final DateTime timestamp;
-  bool isRead; // Changed to mutable for state updates
   final String? hospitalName;
   final String? actionUrl;
   final Map<String, dynamic>? relatedData;
+  bool isRead;
 
   HospitalNotification({
     required this.id,
@@ -34,129 +34,162 @@ class HospitalNotification {
     required this.type,
     required this.priority,
     required this.timestamp,
-    this.isRead = false,
     this.hospitalName,
     this.actionUrl,
     this.relatedData,
+    this.isRead = false,
   });
 
-  // FIXED: Better null handling in fromJson
+  // ✅ ENHANCED: Ultra-safe JSON parsing
   factory HospitalNotification.fromJson(Map<String, dynamic> json) {
-    return HospitalNotification(
-      id: json['id']?.toString() ?? '',
-      title: json['title']?.toString() ?? 'Notifikasi',
-      message: json['message']?.toString() ?? 'Pesan kosong',
-      type: _parseNotificationType(json['type']),
-      priority: _parseNotificationPriority(json['priority']),
-      timestamp: _parseDateTime(json['createdAt'] ?? json['timestamp']),
-      isRead: json['isRead'] == true,
-      hospitalName: json['hospitalName']?.toString(),
-      actionUrl: json['actionUrl']?.toString(),
-      relatedData: json['relatedData'] != null 
-          ? Map<String, dynamic>.from(json['relatedData']) 
-          : null,
-    );
-  }
+    print('🔍 === PARSING NOTIFICATION ===');
+    print('📊 JSON keys: ${json.keys.toList()}');
+    print('📊 JSON data: ${json.toString()}');
 
-  // Helper method to safely parse DateTime
-  static DateTime _parseDateTime(dynamic dateValue) {
-    if (dateValue == null) return DateTime.now();
-    
     try {
-      if (dateValue is String) {
-        return DateTime.parse(dateValue);
-      } else if (dateValue is DateTime) {
-        return dateValue;
-      } else {
-        return DateTime.now();
+      // ✅ SAFE: Parse type
+      NotificationType type;
+      try {
+        final typeString = json['type']?.toString().toLowerCase() ?? 'system';
+        switch (typeString) {
+          case 'queue':
+          case 'antrean':
+            type = NotificationType.queue;
+            break;
+          case 'appointment':
+          case 'jadwal':
+            type = NotificationType.appointment;
+            break;
+          case 'lab_result':
+          case 'labresult':
+          case 'lab':
+            type = NotificationType.labResult;
+            break;
+          case 'payment':
+          case 'pembayaran':
+            type = NotificationType.payment;
+            break;
+          case 'health_tip':
+          case 'healthtip':
+          case 'tips':
+            type = NotificationType.healthTip;
+            break;
+          default:
+            type = NotificationType.system;
+        }
+      } catch (e) {
+        print('❌ Error parsing type: $e');
+        type = NotificationType.system;
       }
-    } catch (e) {
-      print('Error parsing date: $dateValue - $e');
-      return DateTime.now();
+
+      // ✅ SAFE: Parse priority
+      NotificationPriority priority;
+      try {
+        final priorityString =
+            json['priority']?.toString().toLowerCase() ?? 'medium';
+        switch (priorityString) {
+          case 'high':
+          case 'tinggi':
+          case 'penting':
+            priority = NotificationPriority.high;
+            break;
+          case 'low':
+          case 'rendah':
+          case 'info':
+            priority = NotificationPriority.low;
+            break;
+          default:
+            priority = NotificationPriority.medium;
+        }
+      } catch (e) {
+        print('❌ Error parsing priority: $e');
+        priority = NotificationPriority.medium;
+      }
+
+      // ✅ SAFE: Parse timestamp
+      DateTime timestamp;
+      try {
+        if (json['timestamp'] != null) {
+          timestamp = DateTime.parse(json['timestamp'].toString());
+        } else if (json['createdAt'] != null) {
+          timestamp = DateTime.parse(json['createdAt'].toString());
+        } else {
+          timestamp = DateTime.now();
+        }
+      } catch (e) {
+        print('❌ Error parsing timestamp: $e');
+        timestamp = DateTime.now();
+      }
+
+      // ✅ SAFE: Parse related data
+      Map<String, dynamic>? relatedData;
+      try {
+        final relatedDataRaw =
+            json['relatedData'] ?? json['data'] ?? json['metadata'];
+        if (relatedDataRaw != null) {
+          if (relatedDataRaw is String) {
+            // Try to parse JSON string
+            relatedData = jsonDecode(relatedDataRaw);
+          } else if (relatedDataRaw is Map) {
+            relatedData = Map<String, dynamic>.from(relatedDataRaw);
+          }
+        }
+      } catch (e) {
+        print('❌ Error parsing relatedData: $e');
+        relatedData = null;
+      }
+
+      final notification = HospitalNotification(
+        id: json['id']?.toString() ??
+            'unknown_${DateTime.now().millisecondsSinceEpoch}',
+        title: json['title']?.toString() ?? 'Notifikasi',
+        message: json['message']?.toString() ??
+            json['body']?.toString() ??
+            'Tidak ada pesan',
+        type: type,
+        priority: priority,
+        timestamp: timestamp,
+        hospitalName:
+            json['hospitalName']?.toString() ?? json['hospital']?.toString(),
+        actionUrl: json['actionUrl']?.toString() ?? json['action']?.toString(),
+        relatedData: relatedData,
+        isRead: json['isRead'] == true || json['read'] == true,
+      );
+
+      print('✅ Notification parsed successfully: ${notification.title}');
+      return notification;
+    } catch (e, stackTrace) {
+      print('❌ CRITICAL ERROR parsing notification: $e');
+      print('📥 Stack trace: $stackTrace');
+      print('📥 JSON data: ${json.toString()}');
+
+      // ✅ FALLBACK: Return minimal valid notification
+      return HospitalNotification(
+        id: json['id']?.toString() ??
+            'error_${DateTime.now().millisecondsSinceEpoch}',
+        title: 'Error parsing notification',
+        message: 'Terjadi kesalahan saat memproses notifikasi',
+        type: NotificationType.system,
+        priority: NotificationPriority.low,
+        timestamp: DateTime.now(),
+        isRead: false,
+      );
     }
   }
 
-  // Helper method to parse notification type from string
-  static NotificationType _parseNotificationType(dynamic typeValue) {
-    if (typeValue == null) return NotificationType.system;
-    
-    final typeString = typeValue.toString().toUpperCase();
-    switch (typeString) {
-      case 'QUEUE':
-        return NotificationType.queue;
-      case 'APPOINTMENT':
-        return NotificationType.appointment;
-      case 'LAB_RESULT':
-        return NotificationType.labResult;
-      case 'PAYMENT':
-        return NotificationType.payment;
-      case 'SYSTEM':
-        return NotificationType.system;
-      case 'HEALTH_TIP':
-        return NotificationType.healthTip;
-      default:
-        return NotificationType.system;
-    }
-  }
-
-  // Helper method to parse notification priority from string
-  static NotificationPriority _parseNotificationPriority(dynamic priorityValue) {
-    if (priorityValue == null) return NotificationPriority.medium;
-    
-    final priorityString = priorityValue.toString().toUpperCase();
-    switch (priorityString) {
-      case 'HIGH':
-        return NotificationPriority.high;
-      case 'MEDIUM':
-        return NotificationPriority.medium;
-      case 'LOW':
-        return NotificationPriority.low;
-      default:
-        return NotificationPriority.medium;
-    }
-  }
-
-  // Convert to JSON
   Map<String, dynamic> toJson() {
     return {
       'id': id,
       'title': title,
       'message': message,
-      'type': type.toString().split('.').last.toUpperCase(),
-      'priority': priority.toString().split('.').last.toUpperCase(),
+      'type': type.toString().split('.').last,
+      'priority': priority.toString().split('.').last,
       'timestamp': timestamp.toIso8601String(),
-      'isRead': isRead,
       'hospitalName': hospitalName,
       'actionUrl': actionUrl,
       'relatedData': relatedData,
+      'isRead': isRead,
     };
-  }
-
-  // Create a copy with updated fields
-  HospitalNotification copyWith({
-    String? id,
-    String? title,
-    String? message,
-    NotificationType? type,
-    NotificationPriority? priority,
-    DateTime? timestamp,
-    bool? isRead,
-    String? hospitalName,
-    String? actionUrl,
-    Map<String, dynamic>? relatedData,
-  }) {
-    return HospitalNotification(
-      id: id ?? this.id,
-      title: title ?? this.title,
-      message: message ?? this.message,
-      type: type ?? this.type,
-      priority: priority ?? this.priority,
-      timestamp: timestamp ?? this.timestamp,
-      isRead: isRead ?? this.isRead,
-      hospitalName: hospitalName ?? this.hospitalName,
-      actionUrl: actionUrl ?? this.actionUrl,
-      relatedData: relatedData ?? this.relatedData,
-    );
   }
 }
 

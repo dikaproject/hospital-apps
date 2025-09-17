@@ -84,23 +84,47 @@ class LabResultsService {
       final response = await HttpService.get('$_prescriptionUrl/history');
       final data = _parseResponse(response);
 
+      print('💊 Prescription API response success: ${data['success']}');
+      print('💊 Prescription API message: ${data['message']}');
+
       if (data['success'] == true) {
         final List<dynamic> prescriptionData =
             data['data']['prescriptions'] ?? [];
+        print('💊 Raw prescription data count: ${prescriptionData.length}');
 
-        List<prescription_models.DigitalPrescription> prescriptions =
-            prescriptionData.map((item) {
-          return prescription_models.DigitalPrescription.fromJson(item);
-        }).toList();
+        List<prescription_models.DigitalPrescription> prescriptions = [];
 
-        print('✅ Found ${prescriptions.length} prescriptions');
+        for (int i = 0; i < prescriptionData.length; i++) {
+          try {
+            final item = prescriptionData[i];
+            print(
+                '💊 Processing prescription $i: ${item['id']} - ${item['prescriptionCode']}');
+
+            if (item is Map<String, dynamic>) {
+              final prescription =
+                  prescription_models.DigitalPrescription.fromJson(item);
+              prescriptions.add(prescription);
+              print(
+                  '✅ Prescription $i parsed: ${prescription.prescriptionCode} with ${prescription.medications.length} medications');
+            } else {
+              print('⚠️ Prescription $i is not a map: ${item.runtimeType}');
+            }
+          } catch (e, stackTrace) {
+            print('❌ Error parsing prescription $i: $e');
+            print('📥 Stack trace: $stackTrace');
+            // ✅ SKIP instead of adding fallback
+          }
+        }
+
+        print('✅ Successfully parsed ${prescriptions.length} prescriptions');
         return prescriptions;
       } else {
-        print('⚠️ No prescriptions found or API returned false');
+        print('⚠️ API returned success: false - ${data['message']}');
         return [];
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       print('❌ Error fetching prescriptions: $e');
+      print('📥 Stack trace: $stackTrace');
       return [];
     }
   }
