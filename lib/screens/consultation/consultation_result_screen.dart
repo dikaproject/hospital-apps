@@ -4,6 +4,9 @@ import 'dart:math';
 import '../../models/chat_models.dart' as chat; // Use alias to avoid conflict
 import '../../models/consultation_models.dart';
 import 'schedule_consultation_screen.dart'; // Fix path - move to correct location
+import 'doctor_selection_screen.dart'; // Import DoctorSelectionScreen
+import 'direct_consultation_screen.dart';
+import '../../services/direct_consultation_service.dart';
 
 class ConsultationResultScreen extends StatefulWidget {
   final List<chat.ChatMessage> chatHistory; // Use alias
@@ -391,7 +394,7 @@ class _ConsultationResultScreenState extends State<ConsultationResultScreen>
                     Text(
                       _result!.title,
                       style: const TextStyle(
-                        fontSize: 16,
+                        fontSize: 18,
                         fontWeight: FontWeight.bold,
                         color: Color(0xFF2C3E50),
                       ),
@@ -402,7 +405,7 @@ class _ConsultationResultScreenState extends State<ConsultationResultScreen>
                           horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
                         color: severityColor,
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
                         severityBadge,
@@ -936,14 +939,249 @@ class _ConsultationResultScreenState extends State<ConsultationResultScreen>
   }
 
   void _scheduleConsultation() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ScheduleConsultationScreen(
-          aiResult: widget.aiResult,
+    // MVP: Direct to doctor selection instead of schedule
+    // ✅ Check AI result untuk auto direct
+    if (widget.aiResult != null &&
+        (widget.aiResult!.severity == 'HIGH' ||
+            widget.aiResult!.severity == 'MEDIUM')) {
+      // ✅ AUTO DIRECT: Langsung ke doctor selection tanpa pilihan
+      final symptoms = _extractSymptomsFromChatHistory();
+
+      // Show dialog untuk konfirmasi auto direct
+      _showAutoDirectDialog(symptoms);
+    } else {
+      // Normal flow ke doctor selection
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => DoctorSelectionScreen(
+            aiResult: widget.aiResult,
+            symptoms: _extractSymptomsFromChatHistory(),
+          ),
         ),
+      );
+    }
+  }
+
+  // ✅ NEW: Auto direct dialog untuk severity tinggi/sedang
+  void _showAutoDirectDialog(List<String> symptoms) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: _result!.isUrgent
+                    ? const Color(0xFFE74C3C).withOpacity(0.1)
+                    : const Color(0xFF2E7D89).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                _result!.isUrgent
+                    ? Icons.priority_high
+                    : Icons.medical_services,
+                color: _result!.isUrgent
+                    ? const Color(0xFFE74C3C)
+                    : const Color(0xFF2E7D89),
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Chat Dokter Disarankan',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _result!.isUrgent
+                  ? 'Kondisi Anda memerlukan perhatian medis segera. Sistem akan mencarikan dokter yang tersedia untuk chat prioritas.'
+                  : 'Berdasarkan analisis AI, disarankan untuk melanjutkan dengan chat dokter. Sistem akan mencarikan dokter umum yang tersedia.',
+              style: const TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue[200]!),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline, color: Colors.blue, size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Estimasi biaya: ${_result!.isUrgent ? "Rp 25.000" : "Rp 15.000"}\nEstimasi respons: ${_result!.isUrgent ? "Max 1 jam" : "2-4 jam"}',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // Tetap ke doctor selection untuk manual pilihan
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => DoctorSelectionScreen(
+                    aiResult: widget.aiResult,
+                    symptoms: symptoms,
+                  ),
+                ),
+              );
+            },
+            child: const Text(
+              'Pilih Manual',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _startAutoDirectConsultation(symptoms);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _result!.isUrgent
+                  ? const Color(0xFFE74C3C)
+                  : const Color(0xFF2E7D89),
+            ),
+            child: Text(
+              _result!.isUrgent ? 'Chat Prioritas' : 'Chat Dokter',
+              style: const TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
       ),
     );
+  }
+
+  // ✅ NEW: Auto start consultation with first available doctor
+  void _startAutoDirectConsultation(List<String> symptoms) async {
+    try {
+      // Show loading
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text(
+                'Mencari dokter tersedia...',
+                style: TextStyle(color: Colors.white),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      // Get available doctors
+      final doctors = await DirectConsultationService.getAvailableDoctors();
+
+      if (doctors.isEmpty) {
+        Navigator.pop(context); // Close loading
+        _showErrorSnackBar(
+            'Tidak ada dokter tersedia saat ini. Silakan coba lagi nanti.');
+        return;
+      }
+
+      // Auto select first available doctor
+      final selectedDoctor = doctors.first;
+
+      // Start consultation directly
+      final result = await DirectConsultationService.startDirectConsultation(
+        doctorId: selectedDoctor.id,
+        symptoms: symptoms,
+        notes: widget.aiResult?.message,
+      );
+
+      Navigator.pop(context); // Close loading
+
+      // Navigate to success screen
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => DirectConsultationScreen(
+            consultationResult: result,
+            doctor: selectedDoctor,
+            symptoms: symptoms,
+          ),
+        ),
+      );
+    } catch (e) {
+      Navigator.pop(context); // Close loading
+
+      // Fallback to manual selection
+      _showErrorSnackBar(
+          'Tidak dapat memulai chat otomatis. Silakan pilih dokter manual.');
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => DoctorSelectionScreen(
+            aiResult: widget.aiResult,
+            symptoms: symptoms,
+          ),
+        ),
+      );
+    }
+  }
+
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.error, color: Colors.white, size: 16),
+            const SizedBox(width: 8),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
+  }
+
+  // Keep existing methods...
+  List<String> _extractSymptomsFromChatHistory() {
+    List<String> symptoms = [];
+
+    for (var message in widget.chatHistory) {
+      if (message.isUser &&
+          !message.text.toLowerCase().contains('ya') &&
+          !message.text.toLowerCase().contains('tidak') &&
+          message.text.length > 10) {
+        symptoms.add(message.text);
+        if (symptoms.length >= 3) break; // Max 3 symptoms for simplicity
+      }
+    }
+
+    return symptoms.isNotEmpty ? symptoms : ['Keluhan umum'];
   }
 
   // Add medical research card widget
@@ -1129,22 +1367,17 @@ class _ConsultationResultScreenState extends State<ConsultationResultScreen>
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: Colors.blue[50],
-                    borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: Colors.blue[200]!),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Row(
+                  child: const Row(
                     children: [
-                      Icon(Icons.info_outline,
-                          color: Colors.blue[600], size: 16),
-                      const SizedBox(width: 8),
+                      Icon(Icons.info, color: Colors.blue, size: 16),
+                      SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Ditemukan ${results.length} sumber medis terpercaya:',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blue[800],
-                            fontSize: 12,
-                          ),
+                          'Informasi berikut dari sumber medis terpercaya sebagai referensi tambahan.',
+                          style: TextStyle(fontSize: 12),
                         ),
                       ),
                     ],
@@ -1155,98 +1388,35 @@ class _ConsultationResultScreenState extends State<ConsultationResultScreen>
                   final result = results[index];
                   return Container(
                     margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey[200]!),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
+                      border: Border.all(color: Colors.grey[300]!),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF667EEA).withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                result['source'] ?? 'Medical Source',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                  color: const Color(0xFF667EEA),
-                                ),
-                              ),
-                            ),
-                            const Spacer(),
-                            Text(
-                              '#${index + 1}',
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: Colors.grey[500],
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
+                        Text(
+                          result['title'] ?? 'Sumber Medis ${index + 1}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          result['title'] ?? 'Informasi Medis',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                            color: Color(0xFF2C3E50),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
                           result['snippet'] ?? 'Informasi medis terpercaya',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey[700],
-                            height: 1.3,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Sumber: ${result['source'] ?? 'Medical Database'}',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontStyle: FontStyle.italic,
+                            color: Colors.grey,
                           ),
                         ),
-                        if (result['link'] != null) ...[
-                          const SizedBox(height: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.grey[100],
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(Icons.link,
-                                    size: 12, color: Colors.grey[600]),
-                                const SizedBox(width: 4),
-                                Expanded(
-                                  child: Text(
-                                    result['link'],
-                                    style: TextStyle(
-                                      fontSize: 9,
-                                      color: Colors.grey[600],
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
                       ],
                     ),
                   );
@@ -1256,25 +1426,17 @@ class _ConsultationResultScreenState extends State<ConsultationResultScreen>
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: Colors.orange[50],
-                    borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: Colors.orange[200]!),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: const Row(
                     children: [
-                      Icon(Icons.warning_amber,
-                          color: Colors.orange[600], size: 16),
-                      const SizedBox(width: 8),
+                      Icon(Icons.warning, color: Colors.orange, size: 16),
+                      SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          _medicalResearch!['disclaimer'] ??
-                              'Informasi ini hanya sebagai referensi tambahan. Konsultasi dengan dokter tetap diperlukan untuk diagnosis dan pengobatan yang akurat.',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.orange[800],
-                            fontStyle: FontStyle.italic,
-                            height: 1.3,
-                          ),
+                          'Informasi ini tidak menggantikan konsultasi dengan dokter profesional.',
+                          style: TextStyle(fontSize: 12),
                         ),
                       ),
                     ],
@@ -1287,10 +1449,10 @@ class _ConsultationResultScreenState extends State<ConsultationResultScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text(
+            child: const Text(
               'Tutup',
               style: TextStyle(
-                color: const Color(0xFF667EEA),
+                color: Color(0xFF667EEA),
                 fontWeight: FontWeight.bold,
               ),
             ),

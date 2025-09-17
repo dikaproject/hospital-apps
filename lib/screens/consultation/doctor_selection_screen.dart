@@ -1,54 +1,31 @@
 import 'package:flutter/material.dart';
 import '../../models/consultation_models.dart';
 import '../../services/direct_consultation_service.dart';
-import 'doctor_selection_screen.dart';
-import 'chat_consultation_list_screen.dart';
+import 'direct_consultation_screen.dart';
 
-class DirectConsultationScreen extends StatefulWidget {
-  // ✅ MVP: Make all parameters optional for different entry points
-  final DirectConsultationResult? consultationResult;
-  final DoctorInfo? doctor;
-  final List<String>? symptoms;
+class DoctorSelectionScreen extends StatefulWidget {
   final AIScreeningResult? aiResult;
+  final List<String> symptoms;
 
-  const DirectConsultationScreen({
+  const DoctorSelectionScreen({
     super.key,
-    this.consultationResult,
-    this.doctor,
-    this.symptoms,
     this.aiResult,
+    required this.symptoms,
   });
 
   @override
-  State<DirectConsultationScreen> createState() =>
-      _DirectConsultationScreenState();
+  State<DoctorSelectionScreen> createState() => _DoctorSelectionScreenState();
 }
 
-class _DirectConsultationScreenState extends State<DirectConsultationScreen> {
-  bool _isLoading = false;
-  List<DoctorInfo> _availableDoctors = [];
+class _DoctorSelectionScreenState extends State<DoctorSelectionScreen> {
+  List<DoctorInfo> _doctors = [];
+  bool _isLoading = true;
   DoctorInfo? _selectedDoctor;
 
   @override
   void initState() {
     super.initState();
-
-    // Check if this is a completion screen or selection screen
-    if (widget.consultationResult != null && widget.doctor != null) {
-      // This is completion screen - show success
-      _showCompletionView();
-    } else {
-      // This is new consultation - show doctor selection
-      _loadAvailableDoctors();
-    }
-  }
-
-  void _showCompletionView() {
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (mounted) {
-        _showSuccessDialog();
-      }
-    });
+    _loadAvailableDoctors();
   }
 
   void _loadAvailableDoctors() async {
@@ -58,7 +35,7 @@ class _DirectConsultationScreenState extends State<DirectConsultationScreen> {
       final doctors = await DirectConsultationService.getAvailableDoctors();
 
       setState(() {
-        _availableDoctors = doctors;
+        _doctors = doctors;
         _isLoading = false;
         // Auto-select first available doctor for MVP
         if (doctors.isNotEmpty) {
@@ -73,16 +50,6 @@ class _DirectConsultationScreenState extends State<DirectConsultationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // If this is a completion screen
-    if (widget.consultationResult != null && widget.doctor != null) {
-      return _buildCompletionScreen();
-    }
-
-    // Otherwise, this is doctor selection screen
-    return _buildDoctorSelectionScreen();
-  }
-
-  Widget _buildCompletionScreen() {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
@@ -93,30 +60,7 @@ class _DirectConsultationScreenState extends State<DirectConsultationScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
-          'Konsultasi Dimulai',
-          style: TextStyle(
-            color: Color(0xFF2C3E50),
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-      body: _buildSuccessView(),
-    );
-  }
-
-  Widget _buildDoctorSelectionScreen() {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.white,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF2E7D89)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          'Chat Dokter Langsung',
+          'Pilih Dokter Umum',
           style: TextStyle(
             color: Color(0xFF2C3E50),
             fontSize: 18,
@@ -151,7 +95,7 @@ class _DirectConsultationScreenState extends State<DirectConsultationScreen> {
   }
 
   Widget _buildDoctorsList() {
-    if (_availableDoctors.isEmpty) {
+    if (_doctors.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -193,7 +137,7 @@ class _DirectConsultationScreenState extends State<DirectConsultationScreen> {
           _buildConsultationInfo(),
           const SizedBox(height: 24),
           Text(
-            'Dokter Tersedia (${_availableDoctors.length})',
+            'Dokter Tersedia (${_doctors.length})',
             style: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
@@ -201,8 +145,8 @@ class _DirectConsultationScreenState extends State<DirectConsultationScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          ...List.generate(_availableDoctors.length, (index) {
-            final doctor = _availableDoctors[index];
+          ...List.generate(_doctors.length, (index) {
+            final doctor = _doctors[index];
             final isSelected = _selectedDoctor?.id == doctor.id;
 
             return _buildDoctorCard(doctor, isSelected);
@@ -227,10 +171,10 @@ class _DirectConsultationScreenState extends State<DirectConsultationScreen> {
         children: [
           const Row(
             children: [
-              Icon(Icons.chat_bubble, color: Colors.white, size: 24),
+              Icon(Icons.medical_services, color: Colors.white, size: 24),
               SizedBox(width: 12),
               Text(
-                'Chat Dokter Langsung',
+                'Konsultasi Langsung',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 18,
@@ -241,9 +185,7 @@ class _DirectConsultationScreenState extends State<DirectConsultationScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            widget.symptoms != null && widget.symptoms!.isNotEmpty
-                ? 'Keluhan: ${widget.symptoms!.take(3).join(', ')}${widget.symptoms!.length > 3 ? '...' : ''}'
-                : 'Konsultasi umum dengan dokter',
+            'Keluhan: ${widget.symptoms.take(3).join(', ')}${widget.symptoms.length > 3 ? '...' : ''}',
             style: const TextStyle(
               color: Colors.white,
               fontSize: 14,
@@ -435,8 +377,6 @@ class _DirectConsultationScreenState extends State<DirectConsultationScreen> {
   }
 
   Widget _buildBottomBar() {
-    if (widget.consultationResult != null) return const SizedBox();
-
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -464,7 +404,7 @@ class _DirectConsultationScreenState extends State<DirectConsultationScreen> {
             ),
             child: Text(
               _selectedDoctor != null
-                  ? 'Mulai Chat - ${_selectedDoctor!.formattedFee}'
+                  ? 'Mulai Konsultasi - ${_selectedDoctor!.formattedFee}'
                   : 'Pilih Dokter',
               style: TextStyle(
                 color:
@@ -475,115 +415,6 @@ class _DirectConsultationScreenState extends State<DirectConsultationScreen> {
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildSuccessView() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        children: [
-          const SizedBox(height: 40),
-
-          // Success Icon
-          Container(
-            width: 100,
-            height: 100,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF2ECC71), Color(0xFF27AE60)],
-              ),
-              borderRadius: BorderRadius.circular(50),
-            ),
-            child: const Icon(
-              Icons.check_circle,
-              color: Colors.white,
-              size: 50,
-            ),
-          ),
-
-          const SizedBox(height: 24),
-
-          const Text(
-            'Chat Siap Dimulai!',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF2C3E50),
-            ),
-            textAlign: TextAlign.center,
-          ),
-
-          const SizedBox(height: 12),
-
-          Text(
-            'Konsultasi dengan ${widget.doctor?.name ?? 'Dokter'}',
-            style: const TextStyle(
-              fontSize: 16,
-              color: Color(0xFF7F8C8D),
-            ),
-            textAlign: TextAlign.center,
-          ),
-
-          const SizedBox(height: 32),
-
-          // Action Buttons
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _navigateToChat,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF2E7D89),
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.chat_bubble_outline,
-                      color: Colors.white, size: 20),
-                  SizedBox(width: 8),
-                  Text(
-                    'Mulai Chat Sekarang',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 12),
-
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-              onPressed: () =>
-                  Navigator.popUntil(context, (route) => route.isFirst),
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: Color(0xFF7F8C8D)),
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: const Text(
-                'Kembali ke Dashboard',
-                style: TextStyle(
-                  color: Color(0xFF7F8C8D),
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -603,20 +434,20 @@ class _DirectConsultationScreenState extends State<DirectConsultationScreen> {
 
       final result = await DirectConsultationService.startDirectConsultation(
         doctorId: _selectedDoctor!.id,
-        symptoms: widget.symptoms ?? ['Konsultasi umum'],
+        symptoms: widget.symptoms,
         notes: widget.aiResult?.message,
       );
 
       Navigator.pop(context); // Close loading dialog
 
-      // Navigate to completion screen
+      // Navigate to consultation completion screen
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
           builder: (context) => DirectConsultationScreen(
             consultationResult: result,
             doctor: _selectedDoctor!,
-            symptoms: widget.symptoms ?? ['Konsultasi umum'],
+            symptoms: widget.symptoms,
           ),
         ),
       );
@@ -624,79 +455,6 @@ class _DirectConsultationScreenState extends State<DirectConsultationScreen> {
       Navigator.pop(context); // Close loading dialog
       _showErrorSnackBar('Gagal memulai konsultasi: $e');
     }
-  }
-
-  void _showSuccessDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFF2ECC71).withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.check_circle,
-                color: Color(0xFF2ECC71),
-                size: 48,
-              ),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Chat Siap Dimulai!',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF2C3E50),
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Dokter akan merespons dalam 15-30 menit.',
-              style: const TextStyle(
-                color: Color(0xFF7F8C8D),
-                fontSize: 14,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF2E7D89),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8)),
-                ),
-                child: const Text(
-                  'Mengerti',
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _navigateToChat() {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const ChatConsultationListScreen(),
-      ),
-    );
   }
 
   void _showErrorSnackBar(String message) {

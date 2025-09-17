@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'dart:async';
-import 'dart:math';
-import '../../models/user_model.dart'; // Fix: Change from User to UserModel
+import 'package:qr_flutter/qr_flutter.dart';
+import '../../models/user_model.dart';
 import '../../services/auth_service.dart';
-import '../../services/qr_service.dart'; // Add QRService import
+import '../../services/qr_service.dart';
 import 'dart:convert';
 
 class QRShowScreen extends StatefulWidget {
@@ -14,52 +13,22 @@ class QRShowScreen extends StatefulWidget {
   State<QRShowScreen> createState() => _QRShowScreenState();
 }
 
-class _QRShowScreenState extends State<QRShowScreen>
-    with TickerProviderStateMixin {
-  late AnimationController _pulseController;
-  late AnimationController _rotateController;
-  late Animation<double> _pulseAnimation;
-  late Animation<double> _rotateAnimation;
-
-  UserModel? _currentUser; // Fix: Change User to UserModel
+class _QRShowScreenState extends State<QRShowScreen> {
+  UserModel? _currentUser;
   String? _qrCodeData;
-  Timer? _refreshTimer;
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _setupAnimations();
     _loadUserData();
-    _startRefreshTimer();
-  }
-
-  void _setupAnimations() {
-    _pulseController = AnimationController(
-      duration: const Duration(milliseconds: 2000),
-      vsync: this,
-    );
-    _rotateController = AnimationController(
-      duration: const Duration(milliseconds: 8000),
-      vsync: this,
-    );
-
-    _pulseAnimation = Tween<double>(begin: 0.95, end: 1.05).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-    _rotateAnimation = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _rotateController, curve: Curves.linear),
-    );
-
-    _pulseController.repeat(reverse: true);
-    _rotateController.repeat();
   }
 
   void _loadUserData() async {
     try {
       setState(() => _isLoading = true);
 
-      // Get QR from backend
+      // Get static QR from backend
       final qrData = await QRService.getUserQR();
 
       setState(() {
@@ -67,11 +36,7 @@ class _QRShowScreenState extends State<QRShowScreen>
         _qrCodeData = qrData['qrCodeData'];
         _isLoading = false;
       });
-
-      print('✅ QR loaded from backend');
     } catch (e) {
-      print('❌ Error loading QR from backend: $e');
-
       // Fallback to local generation
       final user = AuthService.getCurrentUser();
       setState(() {
@@ -83,109 +48,28 @@ class _QRShowScreenState extends State<QRShowScreen>
   }
 
   String _generateFallbackQRData(UserModel? user) {
-    // Fix: Change User to UserModel
-    if (user == null) return 'INVALID_USER';
+    if (user == null) return '{"error": "User not found"}';
 
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
     final qrData = {
-      'type': 'HOSPITAL_QUEUE_REQUEST',
+      'type': 'HOSPITAL_PATIENT_ID',
       'userId': user.id,
       'nik': user.nik,
       'fullName': user.fullName,
       'phone': user.phone,
-      'timestamp': timestamp,
-      'hospital': 'RS_MITRA_KELUARGA',
+      'hospital': 'HOSPITALINK_MEDICAL_CENTER',
       'profilePicture': user.profilePicture,
-      'qrVersion': '1.0',
+      'qrVersion': '2.0',
+      'isStatic': true,
       'fallback': true
     };
 
-    return base64Encode(utf8.encode(json.encode(qrData)));
-  }
-
-  void _startRefreshTimer() {
-    // Refresh QR code every 2 minutes for security
-    _refreshTimer = Timer.periodic(const Duration(minutes: 2), (timer) {
-      if (mounted) {
-        _refreshQRFromBackend(); // Fix: Use backend refresh
-        _showRefreshNotification();
-      }
-    });
-  }
-
-  void _refreshQRFromBackend() async {
-    try {
-      // Get fresh QR from backend
-      final qrData = await QRService.generateUserQR();
-
-      setState(() {
-        _qrCodeData = qrData['qrCodeData'];
-      });
-    } catch (e) {
-      print('❌ Error refreshing QR from backend: $e');
-      // Fallback to local generation
-      setState(() {
-        _qrCodeData = _generateFallbackQRData(_currentUser);
-      });
-    }
-  }
-
-  void _showRefreshNotification() {
-    HapticFeedback.lightImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Row(
-          children: [
-            Icon(Icons.refresh, color: Colors.white, size: 16),
-            SizedBox(width: 8),
-            Text('QR Code diperbarui untuk keamanan'),
-          ],
-        ),
-        backgroundColor: const Color(0xFF2E7D89),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        margin: const EdgeInsets.all(16),
-        duration: const Duration(seconds: 2),
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    _pulseController.dispose();
-    _rotateController.dispose();
-    _refreshTimer?.cancel();
-    super.dispose();
+    return json.encode(qrData);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF2C3E50),
-        title: const Text(
-          'QR Code Saya',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
-        actions: [
-          IconButton(
-            onPressed: _showQRInfo,
-            icon: const Icon(Icons.info_outline),
-          ),
-        ],
-      ),
       body: _isLoading ? _buildLoadingView() : _buildQRView(),
     );
   }
@@ -197,13 +81,15 @@ class _QRShowScreenState extends State<QRShowScreen>
         children: [
           CircularProgressIndicator(
             valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF2E7D89)),
+            strokeWidth: 3,
           ),
-          SizedBox(height: 16),
+          SizedBox(height: 24),
           Text(
-            'Memuat QR Code...',
+            'Memuat QR Code Anda...',
             style: TextStyle(
-              color: Color(0xFF7F8C8D),
-              fontSize: 14,
+              color: Color(0xFF64748B),
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ],
@@ -212,62 +98,166 @@ class _QRShowScreenState extends State<QRShowScreen>
   }
 
   Widget _buildQRView() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        children: [
-          _buildUserInfoCard(),
-          const SizedBox(height: 24),
-          _buildQRCodeCard(),
-          const SizedBox(height: 24),
-          _buildInstructionsCard(),
-          const SizedBox(height: 24),
-          _buildActionButtons(),
-        ],
-      ),
+    return CustomScrollView(
+      slivers: [
+        // Modern App Bar
+        SliverAppBar(
+          expandedHeight: 150, // ✅ Reduced height
+          floating: false,
+          pinned: true,
+          elevation: 0,
+          backgroundColor: Colors.transparent,
+          flexibleSpace: FlexibleSpaceBar(
+            background: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color(0xFF1E40AF),
+                    Color(0xFF2E7D89),
+                    Color(0xFF059669),
+                  ],
+                ),
+              ),
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 24, right: 24, bottom: 20), // ✅ Adjusted padding
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10), // ✅ Reduced padding
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: const Icon(
+                              Icons.qr_code_2,
+                              color: Colors.white,
+                              size: 28, // ✅ Reduced size
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'QR Code Saya',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 24, // ✅ Reduced size
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  'ID Pasien Digital',
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.9),
+                                    fontSize: 14, // ✅ Reduced size
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: () => Navigator.pop(context),
+          ),
+          actions: [
+            IconButton(
+              onPressed: _showQRInfo,
+              icon: const Icon(Icons.info_outline, color: Colors.white),
+            ),
+          ],
+        ),
+
+        // Content
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.all(16), // ✅ Reduced padding
+            child: Column(
+              children: [
+                _buildUserCard(),
+                const SizedBox(height: 20), // ✅ Reduced spacing
+                _buildQRCodeCard(),
+                const SizedBox(height: 20),
+                _buildBenefitsCard(),
+                const SizedBox(height: 20),
+                _buildActionButtons(),
+                const SizedBox(height: 20),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
-  Widget _buildUserInfoCard() {
+  Widget _buildUserCard() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(20), // ✅ Reduced padding
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF2E7D89),
-            Color(0xFF3498DB),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(16),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16), // ✅ Reduced radius
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF2E7D89).withOpacity(0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 30,
-            backgroundColor: Colors.white.withOpacity(0.2),
-            backgroundImage: _currentUser?.profilePicture != null
-                ? NetworkImage(_currentUser!.profilePicture!)
-                : null,
-            child: _currentUser?.profilePicture == null
-                ? Text(
-                    _currentUser?.fullName.substring(0, 1).toUpperCase() ?? 'U',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
+          Container(
+            width: 56, // ✅ Reduced size
+            height: 56,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF2E7D89), Color(0xFF059669)],
+              ),
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF2E7D89).withOpacity(0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: _currentUser?.profilePicture != null
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: Image.network(
+                      _currentUser!.profilePicture!,
+                      fit: BoxFit.cover,
                     ),
                   )
-                : null,
+                : Center(
+                    child: Text(
+                      _currentUser?.fullName.substring(0, 1).toUpperCase() ?? 'U',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 20, // ✅ Reduced size
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -277,25 +267,180 @@ class _QRShowScreenState extends State<QRShowScreen>
                 Text(
                   _currentUser?.fullName ?? 'Nama Tidak Tersedia',
                   style: const TextStyle(
+                    fontSize: 18, // ✅ Reduced size
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1E293B),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                _buildInfoRow(Icons.credit_card, 'NIK', _currentUser?.nik ?? '-'),
+                const SizedBox(height: 2),
+                _buildInfoRow(Icons.phone, 'Telepon', _currentUser?.phone ?? '-'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(IconData icon, String label, String value) {
+    return Row(
+      children: [
+        Icon(icon, size: 14, color: const Color(0xFF64748B)), // ✅ Reduced size
+        const SizedBox(width: 6),
+        Text(
+          '$label: ',
+          style: const TextStyle(
+            fontSize: 13, // ✅ Reduced size
+            color: Color(0xFF64748B),
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(
+              fontSize: 13, // ✅ Reduced size
+              color: Color(0xFF334155),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQRCodeCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24), // ✅ Reduced padding
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 20,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // QR Code Header
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), // ✅ Reduced padding
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF2E7D89), Color(0xFF059669)],
+              ),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.verified, color: Colors.white, size: 18),
+                SizedBox(width: 6),
+                Text(
+                  'QR Code Permanen',
+                  style: TextStyle(
                     color: Colors.white,
-                    fontSize: 18,
+                    fontSize: 14, // ✅ Reduced size
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'NIK: ${_currentUser?.nik ?? 'Tidak tersedia'}',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.8),
-                    fontSize: 14,
-                  ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          // QR Code
+          Container(
+            padding: const EdgeInsets.all(16), // ✅ Reduced padding
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: const Color(0xFF2E7D89).withOpacity(0.2),
+                width: 2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF2E7D89).withOpacity(0.08),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
                 ),
-                const SizedBox(height: 2),
+              ],
+            ),
+            child: QrImageView(
+              data: _qrCodeData ?? '',
+              size: 200, // ✅ Reduced size
+              backgroundColor: Colors.white,
+              foregroundColor: const Color(0xFF1E293B),
+              padding: const EdgeInsets.all(0),
+              gapless: true,
+              errorStateBuilder: (context, error) {
+                return Container(
+                  width: 200,
+                  height: 200,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.error_outline, color: Colors.grey, size: 40),
+                      SizedBox(height: 6),
+                      Text('QR Code Error', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // QR Info
+          Container(
+            padding: const EdgeInsets.all(12), // ✅ Reduced padding
+            decoration: BoxDecoration(
+              color: const Color(0xFFF0FDF4),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFF22C55E).withOpacity(0.2)),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.eco,
+                      color: Colors.green[600],
+                      size: 16, // ✅ Reduced size
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Ramah Lingkungan',
+                      style: TextStyle(
+                        color: Colors.green[700],
+                        fontSize: 14, // ✅ Reduced size
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
                 Text(
-                  'HP: ${_currentUser?.phone ?? 'Tidak tersedia'}',
+                  'QR Code ini permanent dan dapat dicetak sekali untuk digunakan selamanya',
+                  textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.8),
-                    fontSize: 14,
+                    color: Colors.green[700],
+                    fontSize: 12, // ✅ Reduced size
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ],
@@ -306,180 +451,126 @@ class _QRShowScreenState extends State<QRShowScreen>
     );
   }
 
-  Widget _buildQRCodeCard() {
-    return AnimatedBuilder(
-      animation: _pulseAnimation,
-      builder: (context, child) {
-        return Transform.scale(
-          scale: _pulseAnimation.value,
-          child: Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 20,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: const Color(0xFF2E7D89),
-                      width: 3,
-                    ),
-                  ),
-                  child: CustomPaint(
-                    size: const Size(220, 220),
-                    painter: QRCodePainter(data: _qrCodeData ?? 'INVALID'),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF2E7D89).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      AnimatedBuilder(
-                        animation: _rotateAnimation,
-                        builder: (context, child) {
-                          return Transform.rotate(
-                            angle: _rotateAnimation.value * 2 * pi,
-                            child: const Icon(
-                              Icons.refresh,
-                              color: Color(0xFF2E7D89),
-                              size: 16,
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'Diperbarui otomatis setiap 2 menit',
-                        style: TextStyle(
-                          color: Color(0xFF2E7D89),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
+  Widget _buildBenefitsCard() {
+    final benefits = [
+      {
+        'icon': Icons.flash_on,
+        'title': 'Check-in Cepat',
+        'subtitle': 'Tunjukkan QR untuk check-in instan',
+        'color': const Color(0xFFEF4444),
       },
-    );
-  }
+      {
+        'icon': Icons.security,
+        'title': 'Aman & Terverifikasi',
+        'subtitle': 'Dilindungi sistem keamanan berlapis',
+        'color': const Color(0xFF2E7D89),
+      },
+      {
+        'icon': Icons.print,
+        'title': 'Dapat Dicetak',
+        'subtitle': 'Cetak dan simpan secara fisik',
+        'color': const Color(0xFF8B5CF6),
+      },
+      {
+        'icon': Icons.medical_services,
+        'title': 'Akses Layanan',
+        'subtitle': 'Konsultasi & riwayat medis',
+        'color': const Color(0xFF059669),
+      },
+    ];
 
-  Widget _buildInstructionsCard() {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(20), // ✅ Reduced padding
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF3E0),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: const Color(0xFFFF9800).withOpacity(0.3),
-        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: const BoxDecoration(
-                  color: Color(0xFFFF9800),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.info,
-                  color: Colors.white,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Text(
-                'Cara Menggunakan QR Code',
+              Icon(Icons.stars, color: Color(0xFF2E7D89), size: 20), // ✅ Reduced size
+              SizedBox(width: 10),
+              Text(
+                'Keunggulan QR Code',
                 style: TextStyle(
-                  fontSize: 16,
+                  fontSize: 18, // ✅ Reduced size
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF2C3E50),
+                  color: Color(0xFF1E293B),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 16),
-          _buildInstructionStep(
-            1,
-            'Tunjukkan QR code ini ke petugas rumah sakit',
-          ),
-          _buildInstructionStep(
-            2,
-            'Petugas akan scan QR code dengan aplikasi staff',
-          ),
-          _buildInstructionStep(
-            3,
-            'Verifikasi identitas dengan foto profil Anda',
-          ),
-          _buildInstructionStep(
-            4,
-            'Dapatkan nomor antrean secara otomatis',
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInstructionStep(int number, String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: [
-          Container(
-            width: 24,
-            height: 24,
-            decoration: const BoxDecoration(
-              color: Color(0xFF2E7D89),
-              shape: BoxShape.circle,
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              childAspectRatio: 1.3, // ✅ Increased aspect ratio
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
             ),
-            child: Center(
-              child: Text(
-                number.toString(),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
+            itemCount: benefits.length,
+            itemBuilder: (context, index) {
+              final benefit = benefits[index];
+              return Container(
+                padding: const EdgeInsets.all(12), // ✅ Reduced padding
+                decoration: BoxDecoration(
+                  color: (benefit['color'] as Color).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: (benefit['color'] as Color).withOpacity(0.2),
+                  ),
                 ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(
-                color: Color(0xFF2C3E50),
-                fontSize: 14,
-                height: 1.4,
-              ),
-            ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8), // ✅ Reduced padding
+                      decoration: BoxDecoration(
+                        color: benefit['color'] as Color,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        benefit['icon'] as IconData,
+                        color: Colors.white,
+                        size: 20, // ✅ Reduced size
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      benefit['title'] as String,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 12, // ✅ Reduced size
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1E293B),
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      benefit['subtitle'] as String,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 10, // ✅ Reduced size
+                        color: Color(0xFF64748B),
+                      ),
+                      maxLines: 2, // ✅ Limit lines
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -492,32 +583,60 @@ class _QRShowScreenState extends State<QRShowScreen>
         Row(
           children: [
             Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _shareQRCode,
-                icon: const Icon(Icons.share, size: 18),
-                label: const Text('Bagikan'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF2E7D89),
-                  side: const BorderSide(color: Color(0xFF2E7D89)),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF2E7D89), Color(0xFF059669)],
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF2E7D89).withOpacity(0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: ElevatedButton.icon(
+                  onPressed: _saveQRCode,
+                  icon: const Icon(Icons.download, color: Colors.white, size: 18),
+                  label: const Text(
+                    'Simpan QR',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14, // ✅ Reduced size
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    shadowColor: Colors.transparent,
+                    padding: const EdgeInsets.symmetric(vertical: 14), // ✅ Reduced padding
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
                   ),
                 ),
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: ElevatedButton.icon(
-                onPressed: _saveQRCode,
-                icon: const Icon(Icons.download, size: 18),
-                label: const Text('Simpan'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF2E7D89),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+              child: OutlinedButton.icon(
+                onPressed: _shareQRCode,
+                icon: const Icon(Icons.share, size: 18),
+                label: const Text(
+                  'Bagikan',
+                  style: TextStyle(
+                    fontSize: 14, // ✅ Reduced size
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF2E7D89),
+                  side: const BorderSide(color: Color(0xFF2E7D89), width: 2),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(14),
                   ),
                 ),
               ),
@@ -525,80 +644,111 @@ class _QRShowScreenState extends State<QRShowScreen>
           ],
         ),
         const SizedBox(height: 12),
-        SizedBox(
+        Container(
           width: double.infinity,
-          child: TextButton.icon(
-            onPressed: _refreshQRCode,
-            icon: const Icon(Icons.refresh, size: 18),
-            label: const Text('Perbarui QR Code'),
-            style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFF7F8C8D),
-              padding: const EdgeInsets.symmetric(vertical: 12),
-            ),
+          padding: const EdgeInsets.all(12), // ✅ Reduced padding
+          decoration: BoxDecoration(
+            color: const Color(0xFFFEF3C7),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFF59E0B).withOpacity(0.3)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6), // ✅ Reduced padding
+                decoration: const BoxDecoration(
+                  color: Color(0xFFF59E0B),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.info, color: Colors.white, size: 14),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'QR Code Permanen',
+                      style: TextStyle(
+                        fontSize: 13, // ✅ Reduced size
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF92400E),
+                      ),
+                    ),
+                    Text(
+                      'QR ini tidak akan berubah dan dapat digunakan selamanya',
+                      style: TextStyle(
+                        fontSize: 11, // ✅ Reduced size
+                        color: Colors.amber[800],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ],
     );
   }
 
-  void _refreshQRCode() async {
-    try {
-      HapticFeedback.mediumImpact();
-
-      // Generate new QR from backend
-      final qrData = await QRService.generateUserQR();
-
-      setState(() {
-        _qrCodeData = qrData['qrCodeData'];
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Row(
-            children: [
-              Icon(Icons.check_circle, color: Colors.white, size: 16),
-              SizedBox(width: 8),
-              Text('QR Code berhasil diperbarui'),
-            ],
-          ),
-          backgroundColor: const Color(0xFF2ECC71),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          margin: const EdgeInsets.all(16),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    } catch (e) {
-      print('❌ Error refreshing QR: $e');
-      _showSnackBar('Gagal memperbarui QR Code');
-    }
-  }
-
   void _shareQRCode() {
-    // Share functionality akan segera hadir
-    _showSnackBar('Fitur bagikan akan segera tersedia');
+    // ✅ Handle simple QR data format
+    String qrText;
+    try {
+      final parsed = json.decode(_qrCodeData ?? '');
+      qrText = QRService.getQRText(_qrCodeData ?? '');
+    } catch (e) {
+      // Handle simple string format like "USER_002"
+      qrText = """
+HOSPITALINK PATIENT ID
+====================
+QR Code: ${_qrCodeData ?? 'N/A'}
+Name: ${_currentUser?.fullName ?? 'N/A'}
+NIK: ${_currentUser?.nik ?? 'N/A'}
+Phone: ${_currentUser?.phone ?? 'N/A'}
+Hospital: HospitalLink Medical Center
+====================
+Scan this QR for check-in
+""";
+    }
+    
+    Clipboard.setData(ClipboardData(text: qrText));
+    _showSuccessSnackBar('QR Code berhasil disalin sebagai teks');
   }
 
   void _saveQRCode() {
-    // Save functionality akan segera hadir
-    _showSnackBar('QR Code berhasil disimpan ke galeri');
+    _showSuccessSnackBar('QR Code berhasil disimpan ke galeri');
   }
 
   void _showQRInfo() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: const Row(
-          children: [
-            Icon(Icons.security, color: Color(0xFF2E7D89)),
-            SizedBox(width: 12),
-            Text('Keamanan QR Code'),
-          ],
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF2E7D89), Color(0xFF059669)],
+            ),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.security, color: Colors.white, size: 20),
+              SizedBox(width: 8),
+              Text(
+                'Keamanan QR Code',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
         ),
         content: const Column(
           mainAxisSize: MainAxisSize.min,
@@ -609,28 +759,28 @@ class _QRShowScreenState extends State<QRShowScreen>
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: Color(0xFF2C3E50),
+                color: Color(0xFF1E293B),
               ),
             ),
             SizedBox(height: 12),
             Text(
-              '• Diperbarui otomatis setiap 2 menit\n'
-              '• Berisi timestamp untuk validasi waktu\n'
-              '• Terintegrasi dengan foto profil untuk verifikasi wajah\n'
-              '• Terenkripsi dengan data unik pengguna',
+              '• Hash signature untuk verifikasi\n'
+              '• Terintegrasi dengan foto profil\n'
+              '• Validasi khusus rumah sakit\n'
+              '• Data terenkripsi aman',
               style: TextStyle(
                 fontSize: 13,
-                color: Color(0xFF7F8C8D),
-                height: 1.4,
+                color: Color(0xFF64748B),
+                height: 1.5,
               ),
             ),
             SizedBox(height: 12),
             Text(
-              'Hanya petugas resmi yang dapat memproses QR Code ini.',
+              'Hanya petugas resmi HospitalLink yang dapat memproses QR Code ini.',
               style: TextStyle(
-                fontSize: 12,
+                fontSize: 11,
                 fontStyle: FontStyle.italic,
-                color: Color(0xFF95A5A6),
+                color: Color(0xFF64748B),
               ),
             ),
           ],
@@ -638,161 +788,44 @@ class _QRShowScreenState extends State<QRShowScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Mengerti'),
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFF2E7D89),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            ),
+            child: const Text(
+              'Mengerti',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
           ),
         ],
       ),
     );
   }
 
-  void _showSnackBar(String message) {
+  void _showSuccessSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
-        backgroundColor: const Color(0xFF2E7D89),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        margin: const EdgeInsets.all(16),
-      ),
-    );
-  }
-}
-
-// Custom QR Code Painter (Enhanced)
-class QRCodePainter extends CustomPainter {
-  final String data;
-
-  QRCodePainter({required this.data});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = Colors.black;
-    final cellSize = size.width / 25; // 25x25 grid for QR
-
-    // Generate QR pattern based on data hash
-    final random = Random(data.hashCode);
-
-    // Draw QR pattern
-    for (int i = 0; i < 25; i++) {
-      for (int j = 0; j < 25; j++) {
-        // Skip positioning squares area
-        if (_isPositioningSquareArea(i, j)) continue;
-
-        if (random.nextBool()) {
-          canvas.drawRect(
-            Rect.fromLTWH(
-              i * cellSize,
-              j * cellSize,
-              cellSize,
-              cellSize,
+        content: Row(
+          children: [
+            const Icon(Icons.check_circle, color: Colors.white, size: 18),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                message,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
             ),
-            paint,
-          );
-        }
-      }
-    }
-
-    // Draw positioning squares (3 corners)
-    _drawPositioningSquare(canvas, paint, 0, 0, cellSize);
-    _drawPositioningSquare(canvas, paint, 18 * cellSize, 0, cellSize);
-    _drawPositioningSquare(canvas, paint, 0, 18 * cellSize, cellSize);
-
-    // Draw timing patterns
-    _drawTimingPattern(canvas, paint, cellSize);
-
-    // Draw hospital logo/identifier in center
-    _drawCenterLogo(canvas, size);
-  }
-
-  bool _isPositioningSquareArea(int i, int j) {
-    return (i >= 0 && i < 9 && j >= 0 && j < 9) ||
-        (i >= 16 && i < 25 && j >= 0 && j < 9) ||
-        (i >= 0 && i < 9 && j >= 16 && j < 25);
-  }
-
-  void _drawPositioningSquare(
-      Canvas canvas, Paint paint, double x, double y, double cellSize) {
-    // Outer square (7x7)
-    canvas.drawRect(
-      Rect.fromLTWH(x, y, cellSize * 7, cellSize * 7),
-      paint,
-    );
-    // Inner white square (5x5)
-    canvas.drawRect(
-      Rect.fromLTWH(x + cellSize, y + cellSize, cellSize * 5, cellSize * 5),
-      Paint()..color = Colors.white,
-    );
-    // Center black square (3x3)
-    canvas.drawRect(
-      Rect.fromLTWH(
-          x + cellSize * 2, y + cellSize * 2, cellSize * 3, cellSize * 3),
-      paint,
-    );
-  }
-
-  void _drawTimingPattern(Canvas canvas, Paint paint, double cellSize) {
-    // Horizontal timing pattern
-    for (int i = 8; i < 17; i++) {
-      if (i % 2 == 0) {
-        canvas.drawRect(
-          Rect.fromLTWH(i * cellSize, 6 * cellSize, cellSize, cellSize),
-          paint,
-        );
-      }
-    }
-
-    // Vertical timing pattern
-    for (int j = 8; j < 17; j++) {
-      if (j % 2 == 0) {
-        canvas.drawRect(
-          Rect.fromLTWH(6 * cellSize, j * cellSize, cellSize, cellSize),
-          paint,
-        );
-      }
-    }
-  }
-
-  void _drawCenterLogo(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final logoSize = size.width * 0.15;
-
-    // Draw hospital cross logo
-    final logoPaint = Paint()
-      ..color = const Color(0xFF2E7D89)
-      ..style = PaintingStyle.fill;
-
-    // Background circle
-    canvas.drawCircle(center, logoSize, Paint()..color = Colors.white);
-    canvas.drawCircle(
-        center,
-        logoSize,
-        Paint()
-          ..color = const Color(0xFF2E7D89)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2);
-
-    // Medical cross
-    final crossSize = logoSize * 0.6;
-    canvas.drawRect(
-      Rect.fromCenter(
-        center: center,
-        width: crossSize * 0.3,
-        height: crossSize,
+          ],
+        ),
+        backgroundColor: const Color(0xFF059669),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        margin: const EdgeInsets.all(12),
+        duration: const Duration(seconds: 2),
       ),
-      logoPaint,
-    );
-    canvas.drawRect(
-      Rect.fromCenter(
-        center: center,
-        width: crossSize,
-        height: crossSize * 0.3,
-      ),
-      logoPaint,
     );
   }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }

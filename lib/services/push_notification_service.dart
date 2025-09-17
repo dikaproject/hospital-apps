@@ -45,7 +45,8 @@ class PushNotificationService {
     try {
       final isAllowed = await AwesomeNotifications().isNotificationAllowed();
       if (!isAllowed) {
-        final permission = await AwesomeNotifications().requestPermissionToSendNotifications();
+        final permission =
+            await AwesomeNotifications().requestPermissionToSendNotifications();
         print('🔔 Notification permission: $permission');
         return permission;
       }
@@ -77,7 +78,8 @@ class PushNotificationService {
           id: notificationId,
           channelKey: 'hospitalink_high',
           title: '🔔 Test Notifikasi HospitalLink',
-          body: 'Ini adalah test push notification yang muncul di status bar Android! Tap untuk membuka app.',
+          body:
+              'Ini adalah test push notification yang muncul di status bar Android! Tap untuk membuka app.',
           bigPicture: null,
           notificationLayout: NotificationLayout.Default,
           color: const Color(0xFF2E7D89),
@@ -114,7 +116,8 @@ class PushNotificationService {
     }
   }
 
-  static Future<void> showHospitalNotification(HospitalNotification notification) async {
+  static Future<void> showHospitalNotification(
+      HospitalNotification notification) async {
     try {
       if (!_isInitialized) {
         await initialize();
@@ -126,8 +129,8 @@ class PushNotificationService {
         return;
       }
 
-      final channelKey = notification.priority == NotificationPriority.high 
-          ? 'hospitalink_high' 
+      final channelKey = notification.priority == NotificationPriority.high
+          ? 'hospitalink_high'
           : 'hospitalink_basic';
 
       await AwesomeNotifications().createNotification(
@@ -153,13 +156,15 @@ class PushNotificationService {
           displayOnBackground: true,
           wakeUpScreen: notification.priority == NotificationPriority.high,
         ),
-        actionButtons: notification.actionUrl != null ? [
-          NotificationActionButton(
-            key: 'open_action',
-            label: 'Buka',
-            autoDismissible: true,
-          ),
-        ] : null,
+        actionButtons: notification.actionUrl != null
+            ? [
+                NotificationActionButton(
+                  key: 'open_action',
+                  label: 'Buka',
+                  autoDismissible: true,
+                ),
+              ]
+            : null,
       );
 
       print('✅ Hospital notification sent: ${notification.title}');
@@ -188,7 +193,8 @@ class PushNotificationService {
           id: notificationId,
           channelKey: 'hospitalink_high',
           title: '🏥 Antrean Anda Hampir Tiba!',
-          body: 'Nomor antrean $queueNumber akan dipanggil dalam $estimatedTime. Bersiaplah ke ruang $doctorName.',
+          body:
+              'Nomor antrean $queueNumber akan dipanggil dalam $estimatedTime. Bersiaplah ke ruang $doctorName.',
           bigPicture: null,
           category: NotificationCategory.Reminder,
           notificationLayout: NotificationLayout.BigText,
@@ -200,7 +206,8 @@ class PushNotificationService {
             'doctorName': doctorName,
             'estimatedTime': estimatedTime,
           },
-          autoDismissible: false, // Don't auto dismiss for important queue updates
+          autoDismissible:
+              false, // Don't auto dismiss for important queue updates
           showWhen: true,
           displayOnForeground: true,
           displayOnBackground: true,
@@ -240,7 +247,8 @@ class PushNotificationService {
           id: notificationId,
           channelKey: 'hospitalink_basic',
           title: '📅 Reminder Konsultasi',
-          body: 'Jangan lupa konsultasi dengan $doctorName pada $appointmentTime.',
+          body:
+              'Jangan lupa konsultasi dengan $doctorName pada $appointmentTime.',
           category: NotificationCategory.Event,
           notificationLayout: NotificationLayout.Default,
           color: const Color(0xFF9B59B6),
@@ -287,7 +295,8 @@ class PushNotificationService {
           id: notificationId,
           channelKey: 'hospitalink_basic',
           title: '🧪 Hasil Lab Tersedia',
-          body: 'Hasil pemeriksaan $testName sudah dapat dilihat. Tap untuk melihat detail.',
+          body:
+              'Hasil pemeriksaan $testName sudah dapat dilihat. Tap untuk melihat detail.',
           category: NotificationCategory.Message,
           notificationLayout: NotificationLayout.Default,
           color: const Color(0xFF2ECC71),
@@ -312,6 +321,63 @@ class PushNotificationService {
       print('✅ Lab result notification sent');
     } catch (e) {
       print('❌ Error sending lab result notification: $e');
+    }
+  }
+
+  // Add this method to push_notification_service.dart
+  static Future<void> showHospitalNotificationFromMap(
+      Map<String, dynamic> data) async {
+    try {
+      if (!_isInitialized) {
+        await initialize();
+      }
+
+      final hasPermission = await requestPermission();
+      if (!hasPermission) {
+        print('❌ Notification permission denied');
+        return;
+      }
+
+      final notificationId = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final title = data['title'] ?? 'Hospital Notification';
+      final message = data['message'] ?? 'You have a new notification';
+      final type = data['type'] ?? 'system';
+
+      await AwesomeNotifications().createNotification(
+        content: NotificationContent(
+          id: notificationId,
+          channelKey: 'hospitalink_high',
+          title: '🏥 $title',
+          body: message,
+          bigPicture: null,
+          category: NotificationCategory.Message,
+          notificationLayout: NotificationLayout.BigText,
+          color: const Color(0xFF2E7D89),
+          backgroundColor: const Color(0xFF2E7D89),
+          payload: {
+            'id': data['id']?.toString() ?? '',
+            'type': type,
+            'actionUrl': data['actionUrl'] ?? '',
+            'source': 'background_service',
+          },
+          autoDismissible: true,
+          showWhen: true,
+          displayOnForeground: true,
+          displayOnBackground: true,
+          wakeUpScreen: true,
+        ),
+        actionButtons: [
+          NotificationActionButton(
+            key: 'open',
+            label: 'Buka',
+            autoDismissible: true,
+          ),
+        ],
+      );
+
+      print('✅ Hospital notification sent: $title');
+    } catch (e) {
+      print('❌ Error sending hospital notification: $e');
     }
   }
 
@@ -361,34 +427,38 @@ class PushNotificationService {
   }
 
   @pragma("vm:entry-point")
-  static Future<void> onNotificationCreatedMethod(ReceivedNotification receivedNotification) async {
+  static Future<void> onNotificationCreatedMethod(
+      ReceivedNotification receivedNotification) async {
     print('📱 Notification created: ${receivedNotification.title}');
   }
 
   @pragma("vm:entry-point")
-  static Future<void> onNotificationDisplayedMethod(ReceivedNotification receivedNotification) async {
+  static Future<void> onNotificationDisplayedMethod(
+      ReceivedNotification receivedNotification) async {
     print('👀 Notification displayed: ${receivedNotification.title}');
   }
 
   @pragma("vm:entry-point")
-  static Future<void> onDismissActionReceivedMethod(ReceivedAction receivedAction) async {
+  static Future<void> onDismissActionReceivedMethod(
+      ReceivedAction receivedAction) async {
     print('❌ Notification dismissed: ${receivedAction.title}');
   }
 
   @pragma("vm:entry-point")
-  static Future<void> onActionReceivedMethod(ReceivedAction receivedAction) async {
+  static Future<void> onActionReceivedMethod(
+      ReceivedAction receivedAction) async {
     print('🔔 Notification action received: ${receivedAction.actionType}');
     print('   Action Key: ${receivedAction.buttonKeyPressed}');
-    
+
     // Handle notification tap actions here
     final payload = receivedAction.payload;
     if (payload != null) {
       final actionUrl = payload['actionUrl'];
       final type = payload['type'];
-      
+
       print('Action URL: $actionUrl');
       print('Notification Type: $type');
-      
+
       // You can navigate to specific screens based on actionUrl
       // NavigationService.navigateTo(actionUrl);
     }
@@ -415,20 +485,20 @@ class PushNotificationService {
   // Test different notification types
   static Future<void> sendMultipleTestNotifications() async {
     await showTestNotification();
-    
+
     await Future.delayed(const Duration(seconds: 2));
     await showQueueNotification(
       queueNumber: 'A-15',
       doctorName: 'Dr. Sarah Wijaya - Poli Umum',
       estimatedTime: '5 menit',
     );
-    
+
     await Future.delayed(const Duration(seconds: 2));
     await showAppointmentNotification(
       doctorName: 'Dr. Ahmad Ramdan',
       appointmentTime: 'Besok, 10:00 WIB',
     );
-    
+
     await Future.delayed(const Duration(seconds: 2));
     await showLabResultNotification(
       testName: 'Darah Lengkap',

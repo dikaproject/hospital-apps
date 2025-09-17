@@ -98,7 +98,8 @@ class ChatConsultationService {
 
   // Fix status mapping
   static ConsultationStatus _mapStringToStatus(String? status) {
-    if (status == null) return ConsultationStatus.waiting;
+    if (status == null)
+      return ConsultationStatus.inProgress; // Default for chat
 
     switch (status.toUpperCase()) {
       case 'WAITING':
@@ -106,7 +107,7 @@ class ChatConsultationService {
         return ConsultationStatus.waiting;
       case 'IN_PROGRESS':
       case 'ACTIVE':
-      case 'PAID':
+      case 'DOCTOR_CHAT': // ✅ Add this mapping
         return ConsultationStatus.inProgress;
       case 'COMPLETED':
       case 'FINISHED':
@@ -115,78 +116,91 @@ class ChatConsultationService {
       case 'CANCELED':
         return ConsultationStatus.cancelled;
       default:
-        return ConsultationStatus.waiting;
+        return ConsultationStatus.inProgress; // Default untuk chat aktif
     }
   }
 
   // Fix: Better error handling for consultations list
   static Future<List<ChatConsultation>> getChatConsultations() async {
     try {
-      print('📱 Getting chat consultations...');
+      print('💬 Getting active doctor consultations...');
 
-      // Fix: Use correct endpoint
       final response = await HttpService.get(
-        '/api/consultations/chat', // Changed from '/api/mobile/consultations/chat'
+        '/api/consultations/chat',
         token: AuthService.getCurrentToken(),
       );
 
       print('📥 Chat consultations response: ${response.statusCode}');
+      if (response.body != null) {
+        print('📄 Response body: ${response.body.substring(0, 200)}...');
+      }
 
       final data = _parseResponse(response);
 
       if (data['success'] == true) {
         final consultationsList = data['data']['consultations'] as List? ?? [];
+        print('📊 Raw consultations count: ${consultationsList.length}');
 
-        return consultationsList
+        final mappedConsultations = consultationsList
             .map((item) {
               try {
                 final consultation = item as Map<String, dynamic>;
-                final isPaid = consultation['isPaid'] == true;
-                final paymentStatus = consultation['paymentStatus']?.toString();
+                print('🔄 Processing consultation: ${consultation['id']} - ${consultation['type']}');
 
-                // Fix: Check if consultation is really completed
-                String status = consultation['status']?.toString() ?? 'WAITING';
+                // ✅ DOUBLE CHECK: Skip AI and completed consultations
+                final consultationType = consultation['type']?.toString() ?? '';
                 final isCompleted = consultation['isCompleted'] == true;
-
-                if (isPaid && paymentStatus == 'PAID' && !isCompleted) {
-                  status = 'IN_PROGRESS'; // Only if not completed
-                } else if (isCompleted) {
-                  status = 'COMPLETED';
+                
+                if (consultationType == 'AI') {
+                  print('⚠️ Skipping AI consultation: ${consultation['id']}');
+                  return null;
+                }
+                
+                if (isCompleted) {
+                  print('⚠️ Skipping completed consultation: ${consultation['id']}');
+                  return null;
                 }
 
+                // ✅ Only map active doctor consultations
                 return ChatConsultation(
                   id: consultation['id']?.toString() ?? '',
                   doctorName: consultation['doctorName']?.toString() ??
-                      'Unknown Doctor',
-                  specialty: consultation['specialty']?.toString() ?? 'General',
+                      consultation['doctor']?['name']?.toString() ?? 
+                      'Dokter',
+                  specialty: consultation['specialty']?.toString() ?? 
+                            consultation['doctor']?['specialty']?.toString() ?? 
+                            'Dokter Umum',
                   scheduledTime: DateTime.tryParse(
-                          consultation['scheduledTime']?.toString() ?? '') ??
+                          consultation['scheduledTime']?.toString() ??
+                              consultation['createdAt']?.toString() ?? '') ??
                       DateTime.now(),
-                  status: _mapStringToStatus(status),
-                  queuePosition: (consultation['queuePosition'] is num)
-                      ? (consultation['queuePosition'] as num).toInt()
-                      : 1,
-                  estimatedWaitMinutes: (consultation['estimatedWaitMinutes']
-                          is num)
-                      ? (consultation['estimatedWaitMinutes'] as num).toInt()
-                      : 30,
-                  messages: _parseMessages(consultation['messages']),
+                  status: ConsultationStatus.inProgress, // ✅ Always in progress for active chats
+                  queuePosition: 0,
+                  estimatedWaitMinutes: 30,
+                  messages: _parseMessages(consultation['chatHistory'] ?? consultation['messages']),
                   hasUnreadMessages: consultation['hasUnreadMessages'] == true,
                   lastMessageTime: consultation['lastMessageTime'] != null
                       ? DateTime.tryParse(consultation['lastMessageTime'])
-                      : null,
+                      : consultation['updatedAt'] != null
+                          ? DateTime.tryParse(consultation['updatedAt'])
+                          : null,
                 );
               } catch (e) {
-                print('Error parsing consultation item: $e');
+                print('❌ Error parsing consultation item: $e');
+                print('📄 Item data: $item');
                 return null;
               }
             })
             .where((item) => item != null)
             .cast<ChatConsultation>()
             .toList();
-      }
 
-      return [];
+        print('✅ Mapped active consultations: ${mappedConsultations.length}');
+        return mappedConsultations;
+      } else {
+        print('⚠️ API returned error: ${data['message']}');
+        return [];
+      }
     } catch (e) {
       print('❌ Error getting chat consultations: $e');
       return [];
@@ -253,37 +267,37 @@ class ChatConsultationService {
 
   // Add send message with better error handling
   static Future<ChatConsultationMessage> sendChatMessage({
-  required String consultationId,
-  required String message,
-}) async {
-  try {
-    print('📤 Sending chat message to: $consultationId');
+    required String consultationId,
+    required String message,
+  }) async {
+    try {
+      print('📤 Sending chat message to: $consultationId');
 
-    // Fix: Use correct endpoint without /mobile prefix
-    final response = await HttpService.post(
-      '/api/consultations/send-message', // Fixed path
-      {
-        'consultationId': consultationId,
-        'message': message,
-      },
-      token: AuthService.getCurrentToken(),
-    );
+      // Fix: Use correct endpoint without /mobile prefix
+      final response = await HttpService.post(
+        '/api/consultations/send-message', // Fixed path
+        {
+          'consultationId': consultationId,
+          'message': message,
+        },
+        token: AuthService.getCurrentToken(),
+      );
 
-    print('📥 Send message response: ${response.statusCode}');
+      print('📥 Send message response: ${response.statusCode}');
 
-    final data = _parseResponse(response);
+      final data = _parseResponse(response);
 
-    if (data['success'] == true) {
-      print('✅ Message sent successfully');
-      return ChatConsultationMessage.fromJson(data['data']['message']);
-    } else {
-      throw Exception(data['message'] ?? 'Failed to send message');
+      if (data['success'] == true) {
+        print('✅ Message sent successfully');
+        return ChatConsultationMessage.fromJson(data['data']['message']);
+      } else {
+        throw Exception(data['message'] ?? 'Failed to send message');
+      }
+    } catch (e) {
+      print('❌ Send chat message error: $e');
+      throw Exception('Failed to send message: $e');
     }
-  } catch (e) {
-    print('❌ Send chat message error: $e');
-    throw Exception('Failed to send message: $e');
   }
-}
 
   // Accept early consultation
   static Future<void> acceptEarlyConsultation(String consultationId) async {

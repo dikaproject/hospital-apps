@@ -5,7 +5,7 @@ import '../models/qr_models.dart';
 
 class QRService {
   
-  // Generate user QR code
+  // Generate or get static user QR code
   static Future<Map<String, dynamic>> generateUserQR() async {
     try {
       final response = await HttpService.post(
@@ -28,7 +28,7 @@ class QRService {
     }
   }
 
-  // Get current user QR
+  // Get existing static user QR
   static Future<Map<String, dynamic>> getUserQR() async {
     try {
       final response = await HttpService.get(
@@ -47,6 +47,18 @@ class QRService {
     } catch (e) {
       print('❌ Error getting user QR: $e');
       throw Exception('Failed to get user QR: $e');
+    }
+  }
+
+  // Parse QR data (for verification)
+  static HospitalQRData? parseQRData(String qrData) {
+    try {
+      // ✅ Parse JSON directly (no base64 decoding)
+      final Map<String, dynamic> data = json.decode(qrData);
+      return HospitalQRData.fromJson(data);
+    } catch (e) {
+      print('❌ Error parsing QR data: $e');
+      return null;
     }
   }
 
@@ -99,6 +111,26 @@ class QRService {
     } catch (e) {
       print('❌ Error validating QR: $e');
       return false;
+    }
+  }
+
+  // ✅ NEW: Get formatted QR text for display/sharing
+  static String getQRText(String qrData) {
+    try {
+      final data = json.decode(qrData);
+      return """
+HOSPITALINK PATIENT ID
+====================
+Name: ${data['fullName'] ?? 'N/A'}
+NIK: ${data['nik'] ?? 'N/A'}
+Phone: ${data['phone'] ?? 'N/A'}
+Hospital: ${data['hospital'] ?? 'HospitalLink'}
+Patient ID: ${data['userId'] ?? 'N/A'}
+====================
+Scan this QR for check-in
+""";
+    } catch (e) {
+      return qrData;
     }
   }
 }

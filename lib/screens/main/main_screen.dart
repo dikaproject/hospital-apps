@@ -1335,7 +1335,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => const DirectConsultationScreen(),
+              builder: (context) =>
+                  const DirectConsultationScreen(), // ✅ No required parameters
             ),
           );
         }
@@ -1349,7 +1350,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => const DirectConsultationScreen(),
+            builder: (context) =>
+                const DirectConsultationScreen(), // ✅ No required parameters
           ),
         );
       }

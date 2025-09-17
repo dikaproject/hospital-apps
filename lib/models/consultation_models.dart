@@ -227,7 +227,8 @@ class DoctorInfo {
       name: json['name']?.toString() ?? '',
       specialty: json['specialty']?.toString() ?? '',
       hospital: json['hospital']?.toString(),
-      rating: (json['rating'] is num) ? (json['rating'] as num).toDouble() : null,
+      rating:
+          (json['rating'] is num) ? (json['rating'] as num).toDouble() : null,
       experience: json['experience']?.toString(),
       photoUrl: json['photoUrl']?.toString(),
       consultationFee: parsedFee,
@@ -742,6 +743,7 @@ class DirectConsultationResult {
   final int estimatedWaitMinutes;
   final String status;
   final DateTime scheduledTime;
+  final List<String> nextSteps; // ✅ Add this property
 
   DirectConsultationResult({
     required this.consultationId,
@@ -752,23 +754,27 @@ class DirectConsultationResult {
     required this.estimatedWaitMinutes,
     required this.status,
     required this.scheduledTime,
+    required this.nextSteps, // ✅ Add this parameter
   });
 
   factory DirectConsultationResult.fromJson(Map<String, dynamic> json) {
     return DirectConsultationResult(
-      consultationId: json['consultationId']?.toString() ?? '',
+      consultationId: json['consultation']['id']?.toString() ?? '',
       doctor: DoctorInfo.fromJson(json['doctor'] ?? {}),
-      consultationFee: (json['consultationFee'] is num)
-          ? (json['consultationFee'] as num).toDouble()
+      consultationFee: (json['consultation']['consultationFee'] is num)
+          ? (json['consultation']['consultationFee'] as num).toDouble()
           : 0.0,
-      queueNumber: json['queueNumber']?.toString() ?? '',
-      position: json['position'] is num ? (json['position'] as num).toInt() : 0,
-      estimatedWaitMinutes: json['estimatedWaitMinutes'] is num
-          ? (json['estimatedWaitMinutes'] as num).toInt()
+      queueNumber: json['queue']['queueNumber']?.toString() ?? '',
+      position: json['queue']['position'] is num
+          ? (json['queue']['position'] as num).toInt()
+          : 0,
+      estimatedWaitMinutes: json['queue']['estimatedWaitTime'] is num
+          ? (json['queue']['estimatedWaitTime'] as num).toInt()
           : 15,
-      status: json['status']?.toString() ?? 'WAITING',
-      scheduledTime: DateTime.parse(
-          json['scheduledTime'] ?? DateTime.now().toIso8601String()),
+      status: json['queue']['status']?.toString() ?? 'WAITING',
+      scheduledTime: DateTime.parse(json['consultation']['scheduledTime'] ??
+          DateTime.now().toIso8601String()),
+      nextSteps: List<String>.from(json['nextSteps'] ?? []), // ✅ Add this line
     );
   }
 }
